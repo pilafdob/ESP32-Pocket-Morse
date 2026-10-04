@@ -1,0 +1,8 @@
+.DS_Store
+.pio/
+.tools/
+build/
+output/
+__pycache__/
+*.py[cod]
+web/generated/

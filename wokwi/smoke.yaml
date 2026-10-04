@@ -1,0 +1,14 @@
+name: Two-button E receipt
+version: 1
+steps:
+  - wait-serial: 'MORSE A READY'
+  - set-control: { part-id: dot, control: pressed, value: 1 }
+  - delay: 100ms
+  - set-control: { part-id: dot, control: pressed, value: 0 }
+  - delay: 1100ms
+  - set-control: { part-id: dot, control: pressed, value: 1 }
+  - set-control: { part-id: dash, control: pressed, value: 1 }
+  - delay: 950ms
+  - set-control: { part-id: dot, control: pressed, value: 0 }
+  - set-control: { part-id: dash, control: pressed, value: 0 }
+  - wait-serial: 'MODE:COMPOSE STATUS:DELIVERED ATTEMPT:1'

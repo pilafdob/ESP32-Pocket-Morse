@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-and-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 4.0.23
+      - run: npm run build
+      - run: npm test
+
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install platformio==6.1.19
+      - run: >-
+          pio run
+          -e device_a -e device_b
+          -e device_a_16mb -e device_b_16mb
+          -e device_a_landscape -e device_b_landscape
+          -e device_a_16mb_landscape -e device_b_16mb_landscape
+          -e wokwi

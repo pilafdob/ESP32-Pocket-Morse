@@ -1,0 +1,14 @@
+{
+  "name": "pocket-morse-communicators",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-wasm.mjs",
+    "start": "node scripts/serve.mjs",
+    "test": "node scripts/test-native.mjs && node test/wasm.mjs",
+    "test:native": "node scripts/test-native.mjs",
+    "test:wasm": "node test/wasm.mjs"
+  }
+}
+
