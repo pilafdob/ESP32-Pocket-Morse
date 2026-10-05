@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import queue
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -35,7 +36,19 @@ def platformio_command() -> list[str] | None:
     if executable:
         return [executable]
     if getattr(sys, "frozen", False):
-        return None
+        candidates = [
+            Path.home() / ".local" / "bin" / "pio",
+            Path.home() / ".local" / "bin" / "pio.exe",
+            Path.home() / "Library" / "Application Support" / "pipx" / "venvs" / "platformio" / "bin" / "pio",
+            Path("/opt/homebrew/bin/pio"),
+            Path("/usr/local/bin/pio"),
+        ]
+        app_data = os.environ.get("APPDATA")
+        if app_data:
+            candidates.extend(Path(app_data).glob("Python/Python*/Scripts/pio.exe"))
+        candidates.extend(Path.home().glob("AppData/Local/Programs/Python/Python*/Scripts/pio.exe"))
+        executable = next((str(path) for path in candidates if path.is_file()), None)
+        return [executable] if executable else None
     if importlib.util.find_spec("platformio") is not None:
         return [sys.executable, "-m", "platformio"]
     return None
@@ -185,7 +198,11 @@ class FlashPairApp:
             return
         pio = platformio_command()
         if not pio:
-            messagebox.showerror("PlatformIO not found", "Install PlatformIO Core and ensure `pio` is available on PATH, then restart this app.")
+            messagebox.showerror(
+                "PlatformIO not found",
+                "Install PlatformIO Core (on macOS, `pipx install platformio`) and reopen this app. "
+                "The uploader checks PATH and the usual pipx/Homebrew locations.",
+            )
             return
         if self.flash_size.get() == "16 MB" and not messagebox.askyesno(
             "Confirm 16 MB flash",
