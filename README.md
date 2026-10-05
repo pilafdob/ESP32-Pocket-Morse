@@ -93,7 +93,7 @@ The receiver taps BOTH to reveal a new message. While reading, DOT/DASH browse s
 
 The onboard GPIO0 button is DOT and GPIO35 is DASH. Release GPIO0 while powering up or resetting; holding it low selects the ESP32 serial bootloader. No external button wiring is needed.
 
-The project uses authenticated encryption and per-pair keys, but has not been independently security-audited and does not enable ESP32 Secure Boot or Flash Encryption. Physical extraction of a board's flash/NVS can expose its pair key. Do not use this prototype for high-stakes secrets or life-safety communication. Changing partition layouts on an already-paired device has not been migration-tested; do not assume messages or pairing data survive a partition-table change.
+The project uses authenticated encryption and per-pair keys, but has not been independently security-audited and does not enable ESP32 Secure Boot or Flash Encryption. Physical extraction of a board's flash/NVS can expose its pair key. Do not use this prototype for high-stakes secrets or life-safety communication. Changing partition layouts on an already-paired device has not been migration-tested; do not assume messages or pairing data survive a partition-table change. See [SECURITY.md](SECURITY.md) for supported versions and private vulnerability reporting.
 
 ## Tests and licenses
 
