@@ -1,12 +1,12 @@
 # Pocket Morse Communicators
 
-Created by **Pilafdob**. Build a pair of pocket Morse communicators with the **original LILYGO TTGO T-Display ESP32** (the 135 × 240 ST7789 model with two onboard buttons). The devices send encrypted messages directly over ESP-NOW; no router, external buttons, LED, or buzzer is needed.
+Created by **Filip**. Build a pair of pocket Morse communicators with the **original LILYGO TTGO T-Display ESP32** (the 135 × 240 ST7789 model with two onboard buttons). The devices send encrypted messages directly over ESP-NOW; no router, external buttons, LED, or buzzer is needed.
 
-> This project targets the original TTGO T-Display, not the T-Display S3 or other similarly named boards. The physical hardware path is intended for this board; the browser lab is a simulator, not a radio or flash-storage emulator.
+> This project targets the original TTGO T-Display, not the T-Display S3 or other similarly named boards. The browser lab is a simulator, not a radio or flash-storage emulator.
 
 ## Demo
 
-The screenshots show the browser simulator after Device A sends `HELLO` and Device B receives it. They are generated from the shared C++ application core.
+The screenshots show Device A delivering `HELLO` and Device B receiving a new inbox message in the browser simulator. They use the same C++ application core as the firmware.
 
 ![Pocket Morse simulator in portrait layout, with HELLO delivered and waiting in Device B's inbox](docs/images/simulator-portrait.png)
 
@@ -17,10 +17,54 @@ The screenshots show the browser simulator after Device A sends `HELLO` and Devi
 - Two original LILYGO TTGO T-Display ESP32 boards. Confirm the display and flash size before building.
 - USB data cables for flashing and one-time pairing.
 - [PlatformIO Core](https://platformio.org/install/cli) for firmware builds.
-- [Node.js](https://nodejs.org/) for the browser simulator and tests.
-- [Emscripten](https://emscripten.org/docs/getting_started/downloads.html) with `em++` on `PATH` to rebuild the WebAssembly simulator (tested with 4.0.23).
+- Python 3.10+ with Tkinter for the desktop flash-and-pair utility.
+- Node.js and [Emscripten](https://emscripten.org/docs/getting_started/downloads.html) for the browser simulator and tests; `em++` must be on `PATH` to rebuild WebAssembly (tested with Emscripten 4.0.23).
 
-## Build and try the simulator
+## Flash and pair with the desktop utility
+
+Windows and macOS release archives are published on the [GitHub Releases page](https://github.com/pilafdob/ESP32-Pocket-Morse/releases). Extract the complete archive and run `PocketMorseUploader.exe` on Windows or open `PocketMorseUploader.app` on macOS. Keep `provision_pair` and the `project` folder beside the app; the archive is a unit. These unsigned builds may trigger the operating system's download warning.
+
+The desktop app needs PlatformIO Core installed and its `pio` command available on `PATH`. It builds firmware locally for the selected board; the release archive includes the firmware source. Pairing uses the included helper and bundled pyserial. Release assets are built on native Windows/macOS runners and attached when an `uploader-v*` tag is pushed.
+
+To build the desktop app yourself, install packaging dependencies and run the PyInstaller commands from the workflow in `.github/workflows/uploader-release.yml`; the workflow builds each operating system's native app on its own runner.
+
+Create a Python environment and install the uploader dependencies (pyserial and PlatformIO):
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-uploader.txt
+.venv/bin/python scripts/flash_pair_gui.py
+```
+
+The window lists connected serial devices. Plug in one board, select its port, choose role A or B, confirm its flash size, then select **Build & upload firmware**. Repeat for the other board with the other role. The default 4 MB target is safe when flash size is unknown; select 16 MB only after checking the chip ID. The utility invokes PlatformIO (`pio`) to build and upload.
+
+After flashing both boards, connect them at the same time, choose their ports under **Pair the two boards**, and select **Generate key & pair A + B**. The tool verifies that the roles and MAC addresses match, generates a fresh random key in memory, and sends it directly to both devices over USB. The key is never compiled into the firmware or saved to a file. Pairing is a separate step because both device MAC addresses are needed to configure the shared key correctly.
+
+Keep serial monitors closed while flashing or pairing. Pairing refuses already-configured devices and will not erase a used or corrupt inbox. There is no recovery copy of the key; replacing a board requires planning a deliberate re-pair of the set.
+
+### Check flash size first
+
+Do not infer flash size from a listing or seller description. Connect each board and run:
+
+```sh
+python3 -m pip install esptool
+python3 -m esptool --port /dev/cu.YOUR_PORT flash_id
+```
+
+**Never flash a 16 MB partition layout to a 4 MB board.** If you cannot verify the size, use the utility's default 4 MB option.
+
+### Manual firmware build
+
+The utility selects the same targets directly. To build without the GUI:
+
+```sh
+pio run -e device_a -e device_b
+pio run -e device_a_16mb -e device_b_16mb
+```
+
+Landscape variants are available as `device_a_landscape` / `device_b_landscape` and `device_a_16mb_landscape` / `device_b_16mb_landscape`. The single-device Wokwi target is `wokwi`.
+
+## Try the browser simulator
 
 ```sh
 npm run build
@@ -28,54 +72,7 @@ npm test
 npm start
 ```
 
-Open the local URL printed by `npm start`. Select **Try HELLO** to see delivery and the encrypted packet trace. The simulator runs two copies of the C++ application with a deterministic in-memory link; it does not test actual ESP-NOW radio, TFT optics, or LittleFS behavior.
-
-## Build the firmware
-
-The default targets use a 4 MB-safe partition layout:
-
-```sh
-pio run -e device_a -e device_b
-```
-
-For a confirmed 16 MB device, use the larger inbox partition:
-
-```sh
-pio run -e device_a_16mb -e device_b_16mb
-```
-
-Landscape firmware variants are also available as `device_a_landscape` / `device_b_landscape` and `device_a_16mb_landscape` / `device_b_16mb_landscape`. Build the Wokwi target with `pio run -e wokwi`.
-
-### Check flash size first
-
-Do not infer flash size from a listing or seller description. Connect each board and check it with `esptool`:
-
-```sh
-python3 -m pip install esptool
-python3 -m esptool --port /dev/cu.YOUR_PORT flash_id
-```
-
-**Never flash a 16 MB partition table to a 4 MB board.** If the board reports 4 MB or you cannot verify its size, use the default `device_a` and `device_b` targets.
-
-## Flash and pair two devices
-
-Flash a different role to each board. Replace the port names with the ports reported on your computer:
-
-```sh
-pio run -e device_a -t upload --upload-port /dev/cu.YOUR_A_PORT
-pio run -e device_b -t upload --upload-port /dev/cu.YOUR_B_PORT
-```
-
-For confirmed 16 MB boards, use `device_a_16mb` and `device_b_16mb` instead. Then install the pairing tool's serial dependency and pair both connected boards in one command:
-
-```sh
-python3 -m pip install pyserial
-python3 scripts/provision_pair.py --a /dev/cu.YOUR_A_PORT --b /dev/cu.YOUR_B_PORT
-```
-
-Keep both serial ports free of monitor programs during pairing. Pairing creates a fresh random key and provisions it to these two boards; routine pairing will not overwrite an existing pair or format a used inbox. There is no recovery copy of the key. Replacing a board or erasing its pair data requires a deliberate recovery and re-pair of both devices.
-
-The onboard GPIO0 button is DOT and GPIO35 is DASH. Release GPIO0 while powering up or resetting; holding it low selects the ESP32 serial bootloader. No external button wiring is required.
+Open the local URL printed by `npm start`, then select **Try HELLO**. The simulator includes two communicators, an encrypted packet trace, and controls for dropped or corrupted packets. Its link and inbox are simulated; it does not test actual ESP-NOW radio, TFT optics, or LittleFS behavior.
 
 ## Controls
 
@@ -90,92 +87,16 @@ The onboard GPIO0 button is DOT and GPIO35 is DASH. Release GPIO0 while powering
 | Triple-tap BOTH | Recall the last sent text when the draft is empty |
 | Quadruple-tap BOTH | Open the Morse dictionary |
 
-The receiver must tap BOTH to reveal a new message. While reading, DOT/DASH browse saved messages; hold DOT to delete the current one. An authenticated receipt means the encrypted record was written and read back successfully, not that a person has read it. The physical inbox is stored in flash; drafts and last-sent recall are held in RAM and are lost on restart.
+The receiver taps BOTH to reveal a new message. While reading, DOT/DASH browse saved messages; hold DOT to delete the current one. The physical inbox is stored in flash; drafts and last-sent recall are held in RAM and are lost on restart.
 
-## Safety and security notes
+## Hardware and security notes
 
-The project uses authenticated encryption and per-pair keys, but it is not independently security-audited and does not enable ESP32 Secure Boot or Flash Encryption. Physical extraction of a board's flash/NVS can expose its pair key. Do not use this prototype for high-stakes secrets or life-safety communication.
+The onboard GPIO0 button is DOT and GPIO35 is DASH. Release GPIO0 while powering up or resetting; holding it low selects the ESP32 serial bootloader. No external button wiring is needed.
 
-Changing partition layouts on an already-paired device has not been migration-tested. Back up what matters and do not assume messages or pairing data survive a partition-table change. The Wokwi target and browser simulator do not verify physical radio delivery, flash wear, power-loss behavior, or real display output.
+The project uses authenticated encryption and per-pair keys, but has not been independently security-audited and does not enable ESP32 Secure Boot or Flash Encryption. Physical extraction of a board's flash/NVS can expose its pair key. Do not use this prototype for high-stakes secrets or life-safety communication. Changing partition layouts on an already-paired device has not been migration-tested; do not assume messages or pairing data survive a partition-table change.
 
-## Tests and CI
+## Tests and licenses
 
-`npm test` runs native C++ sanitizer tests and WebAssembly scenarios. GitHub Actions builds all firmware variants and runs the test suite on pushes and pull requests. See [CI workflow](.github/workflows/ci.yml).
+`npm test` runs native C++ sanitizer tests and WebAssembly scenarios. GitHub Actions builds all firmware variants and runs tests on pushes and pull requests; see the [CI workflow](.github/workflows/ci.yml).
 
-Firmware dependencies include [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI); cryptographic primitives are provided by [Monocypher](lib/Monocypher/LICENCE.md). Project license: [MIT](LICENSE).# Pocket Morse Communicators
-
-Created by **Pilafdob**, Pocket Morse Communicators let two LILYGO TTGO T-Display ESP32 boards exchange **encrypted Morse messages** over ESP-NOW using only their onboard buttons. The browser-based simulator runs the same portable C++ core through WebAssembly.
-
-## Controls
-
-| Gesture | Compose mode | Incoming/reading mode |
-| --- | --- | --- |
-| Tap DOT / DASH | Append Morse symbol | Previous / next stored message while reading |
-| Wait 0.5 seconds after symbol | Auto-confirm letter | — |
-| Tap BOTH | Confirm pending letter; otherwise add a space | Reveal incoming message; tap again to return to compose |
-| Hold DASH 0.8 s | Erase pending letter, or last letter of current word | — |
-| Hold DOT 0.8 s | Erase entire last word, including a pending Morse letter | Immediately delete the message being read |
-| Hold BOTH 0.8 s | Send current draft; retry after failure | — |
-| Double-tap BOTH | Open inbox, including previously read saved messages | — |
-| Triple-tap BOTH | Restore last sent text if draft is empty | — |
-| Quadruple-tap BOTH | Open Morse dictionary | — |
-| Dictionary DOT / DASH / BOTH | Previous page / next page / close | — |
-
-Only the two onboard buttons are used. The top-left **LINK/UNLINK** state is an authenticated ping/reply freshness indication (every 2 seconds, expires after 6 seconds), not a continuous radio connection. The top-right ring fills for auto-confirm and button holds. The physical display deliberately omits packet IDs/attempt counters; the browser workbench shows those for debugging.
-
-The draft remains on screen after failed delivery and can be retried without retyping. It is cleared only after an authenticated application-level receipt ACK. Recipient contents remain hidden until accepted. The top of the screen shows `nN mS` (new/saved counts) and `ROOM n` (estimated remaining message slots); additional messages can arrive while one is open. Double-tap BOTH from compose opens the oldest unread message, or the oldest saved read message when nothing is unread, without changing the draft. DOT/DASH browse all saved messages; `MSG X/Y` identifies the current position. Read messages remain browsable until deliberately deleted. There is no arbitrary message-count limit on the physical device: its dedicated flash filesystem reserves at least 64 KiB or 2% (whichever is greater) as a write-safety buffer. `ROOM` counts reusable deleted record slots plus conservative new 144-byte records below that buffer; it is an estimate, not a guarantee against storage faults or flash wear. Existing saved records remain readable even if an older firmware version had already used space now reserved; deleted slots remain reusable. If a write fails, the sender receives no receipt ACK. Deletion reuses a record slot, but reading does not require deletion or free space.
-
-An ACK means the recipient device has successfully written and re-read the encrypted message record, **not** that a person has read it. The physical inbox survives ordinary restarts, but the composition draft and last-sent recall are RAM-only. The browser/Wokwi inbox is simulated in RAM. A power cut during a storage write, damaged flash, or an untested hardware fault can still cause failure; this is not a life-safety messenger.
-
-## Build and browser lab
-
-Install PlatformIO CLI and an Emscripten SDK providing `em++` on `PATH` (tested here with Emscripten 4.0.23 and PlatformIO 6.1.19). Node.js is also needed; there are no npm package dependencies.
-
-```sh
-pio run -e device_a -e device_b
-pio run -e device_a_16mb -e device_b_16mb
-pio run -e device_a_landscape -e device_b_landscape
-npm run build
-npm test
-npm start
-```
-
-Open the URL printed by `npm start` (normally `http://127.0.0.1:4173`). It defaults to the **135×240 portrait** screen and offers a landscape-preview checkbox. It has two communicators, a packet trace, controls to drop text/ACK, corrupt encrypted frames, disconnect/reconnect, and built-in scenarios. `npm test` runs host C++ sanitizer tests plus WebAssembly scenarios. The simulator uses two independent instances of the C++ app and the same encrypted channel, but a RAM inbox rather than physical flash; its `ROOM` count is the RAM model's remaining slots, not physical flash capacity. Its transport has deterministic 80 ms latency, not actual RF propagation. Browser keyboard: `Q/E` for A DOT/DASH, `I/P` for B; simultaneous keys make BOTH.
-
-## Hardware, flashing, and pairing
-
-The original T-Display's onboard GPIO0 button is DOT and GPIO35 button is DASH. This matches LILYGO's listed GPIOs and factory sketch; the Button 1/2 numbering differs between those two references, but the pins are the same. GPIO0 is configured as an active-low input with pull-up; GPIO35 is input-only, active-low, and uses its board pull-up, so firmware uses plain `INPUT` there. Both switches are already routed on the board; no external button wiring is needed. Release GPIO0 while resetting or powering up, because holding it low at reset selects the ESP32 serial bootloader. GPIO27 is unused. The ST7789 screen is physically 135×240 in portrait. Firmware defaults to TFT_eSPI rotation 0 and a 135×240 sprite; separate `*_landscape` environments preserve rotation 1 and the 240×135 layout. Both use `Setup25_TTGO_T_Display.h`. The USB cables from the pictured kit are suitable for testing; no external button, LED, resistor, or buzzer is required.
-
-**Flash size matters.** LILYGO documents a 4 MB original board and a 16 MB variant; the seller specification you supplied says 16 MB, but that is not a readout from the actual chip. Install `esptool` if needed, then check each attached board with `python3 -m esptool --port /dev/cu.YOUR_PORT flash_id` before using a 16 MB target. The regular `device_a`/`device_b` targets retain a 4 MB-safe partition table (about 2.4 MiB inbox partition); `device_a_16mb`/`device_b_16mb` use a 2 MiB firmware partition and a 13.94 MiB inbox partition. Filesystem metadata reduces usable message space. Each encrypted record is 144 bytes; the app does not hard-code a message limit. **Never flash a 16 MB partition table to a 4 MB device.**
-
-Flash *different* roles on two physical boards, for example:
-
-```sh
-pio run -e device_a_16mb -t upload --upload-port /dev/cu.YOUR_A_PORT
-pio run -e device_b_16mb -t upload --upload-port /dev/cu.YOUR_B_PORT
-```
-
-With both USB serial ports free of monitors, pair once:
-
-```sh
-python3 -m pip install esptool pyserial
-python3 scripts/provision_pair.py --a /dev/cu.YOUR_A_PORT --b /dev/cu.YOUR_B_PORT
-```
-
-The tool verifies each board's role/MAC, initializes only a fully blank inbox partition, generates a fresh random 256-bit key on the USB host, sends it only to those two boards, and neither prints nor saves it. It refuses a previously used/corrupt partition rather than silently formatting messages. Firmware stores the pair key and anti-replay counters in ESP32 NVS; message contents are separately encrypted in LittleFS with a pair-derived key. Routine pairing refuses to overwrite existing data. Both boards must use the same `config::Channel` in `src/config.h` (default 1); no Wi-Fi router is needed. **Do not share the provisioning USB serial ports with a monitor.** If a device is replaced or either pair record is erased, stop and plan a deliberate recovery/re-pair of both devices; there is no recovery copy of the key. Updating an already-paired board from the older partition scheme has **not** been migration-tested: back up what matters and do not assume its key or messages will survive a partition-table change.
-
-If macOS does not show the board as a `/dev/cu.*` serial port, identify its USB bridge before installing a driver. LILYGO's [T-Display repository](https://github.com/xinyuan-lilygo/ttgo-t-display) links CHxxx and CP210x drivers; the [CH9102 macOS link you supplied](https://github.com/Xinyuan-LilyGO/CH9102_Mac_Driver) is relevant only if your board actually uses that bridge. This project does not install drivers automatically.
-
-## Security boundary
-
-Application text is converted to Morse symbols and packed as binary dot/dash sequences **before** authenticated encryption. All packet types—text, receipt ACK, and link ping/pong—use Monocypher XChaCha20-Poly1305 with role-separated keys and durable transmit counters. The entire padded payload is encrypted at a fixed 109-byte size. ESP-NOW's unicast CCMP is enabled as an additional layer, with its own pair-derived keys. Malformed authentication tags, wrong pair keys, altered bits, reflection, and replayed frames are rejected. A radio listener can still see timing, MAC addresses, channel, and frame counts; encryption does not make the transmission invisible.
-
-This is substantially safer than compiling one permanent common secret into every firmware image: each pair gets an independent random root key, provisioned over USB and stored locally. It is **not** unhackable. A compromised USB host, a stolen device whose flash/NVS can be read, or a future cryptographic flaw can expose a key. Message records are encrypted at rest, but because the storage key derives from the NVS root key, this does **not** defeat physical key extraction. The ESP32 build here does **not** enable Secure Boot or Flash Encryption. A more protective production design would provision secrets under secure boot + flash encryption and support authenticated key rotation; an ephemeral authenticated key exchange would also add forward secrecy, at the cost of more code and setup. No independent security audit or penetration test has been performed. Do not reuse this for high-stakes secrets without one.
-
-## Wokwi and verification
-
-`pio run -e wokwi` builds the single-device Wokwi firmware; `diagram.json` wires GPIO0 and GPIO35 (external 10 kΩ pull-up). `wokwi.toml` points to the built binary. Open this project in Wokwi and run `wokwi/smoke.yaml` to check button/mode behavior. Wokwi's current supported parts do not reproduce the exact ST7789 panel, and multi-device ESP-NOW is unavailable, so this target uses an encrypted in-memory peer and serial status output. It cannot validate the real RF path or TFT optics. Do not interpret a Wokwi build as a successful Wokwi runtime test.
-
-Verified on this host: all nine two-button 4 MB/16 MB portrait, preserved landscape, and Wokwi firmware targets built after changing letter auto-confirm to 500 ms; 11 native test groups passed under AddressSanitizer/UndefinedBehaviorSanitizer, including 320 upstream AEAD known-answer vectors, 872 one-bit corruption probes, 10,000 parser probes, encrypted-inbox reboot/full/corruption/ACK checks, capacity counters and layout bounds; 14 WebAssembly scenarios passed, including the 500 ms auto-confirm threshold. Current portrait and landscape browser screenshots were inspected; the visible check button reported `13/13`, with no browser console errors. The browser and Wokwi do not exercise LittleFS. A physical flash-size readout, two-board exchange, LittleFS runtime, Wokwi runtime launch, and real TFT visual inspection have **not** been verified here.
-
-Sources: [PlatformIO board](https://docs.platformio.org/en/stable/boards/espressif32/lilygo-t-display.html), [LILYGO T-Display pinout](https://github.com/Xinyuan-LilyGO/TTGO-T-Display), [ESP-NOW security](https://docs.espressif.com/projects/esp-idf/en/v4.4/esp32/api-reference/network/esp_now.html), [Monocypher AEAD](https://monocypher.org/manual/aead), [Wokwi supported hardware](https://docs.wokwi.com/getting-started/supported-hardware).
+Firmware uses [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI); cryptographic primitives are provided by [Monocypher](lib/Monocypher/LICENCE.md). Project license: [MIT](LICENSE).

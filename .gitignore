@@ -1,7 +1,11 @@
 .DS_Store
 .pio/
 .tools/
+.venv/
+venv/
 build/
+dist/
+*.spec
 output/
 __pycache__/
 *.py[cod]
