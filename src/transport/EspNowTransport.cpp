@@ -9,6 +9,11 @@ bool EspNowTransport::begin(uint8_t role, uint8_t channel) {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
     Serial.printf("STA MAC: %s\n", WiFi.macAddress().c_str());
+    const esp_err_t powerSaveResult = esp_wifi_set_ps(WIFI_PS_NONE);
+    if (powerSaveResult != ESP_OK) {
+        Serial.printf("Could not disable Wi-Fi power save: %s\n", esp_err_to_name(powerSaveResult));
+        return false;
+    }
     if (!store_.configured()) {
         Serial.println("PAIR REQUIRED: use scripts/provision_pair.py over USB.");
         return false;
@@ -35,6 +40,13 @@ bool EspNowTransport::begin(uint8_t role, uint8_t channel) {
     crypto_wipe(lmk, 32);
     secure_.begin(store_.root(), role);
     ready_ = esp_now_add_peer(&info) == ESP_OK;
+    if (ready_) {
+        esp_wifi_set_promiscuous_rx_cb(promiscuousCallback);
+        wifi_promiscuous_filter_t filter = {};
+        filter.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
+        esp_wifi_set_promiscuous_filter(&filter);
+        esp_wifi_set_promiscuous(true);
+    }
     Serial.printf("ESP-NOW %s; channel %u\n", ready_ ? "READY" : "INIT FAILED", channel);
     return ready_;
 }
@@ -57,6 +69,16 @@ void EspNowTransport::receiveCallback(const uint8_t* mac, const uint8_t* bytes, 
 void EspNowTransport::sendCallback(const uint8_t*, esp_now_send_status_t status) {
     if (instance_) xQueueSend(instance_->outcomes_, &status, 0);
 }
+void EspNowTransport::promiscuousCallback(void* buffer, wifi_promiscuous_pkt_type_t type) {
+    auto* self = instance_;
+    if (!self || !buffer || type != WIFI_PKT_MGMT) return;
+    const auto* packet = static_cast<const wifi_promiscuous_pkt_t*>(buffer);
+    const uint8_t* frame = packet->payload;
+    // ESP-NOW uses 802.11 action frames; address 2 is the transmitter MAC.
+    if (packet->rx_ctrl.sig_len < 24 || (frame[0] & 0xfc) != 0xd0 ||
+        memcmp(frame + 10, self->peer_, sizeof(self->peer_)) != 0) return;
+    self->peerRssi_ = packet->rx_ctrl.rssi;
+}
 void EspNowTransport::poll(morse::App& app, uint32_t now) {
     if (!ready_) return;
     Received message;
@@ -70,4 +92,5 @@ void EspNowTransport::poll(morse::App& app, uint32_t now) {
     esp_now_send_status_t status;
     while (xQueueReceive(outcomes_, &status, 0) == pdTRUE)
         if (status != ESP_NOW_SEND_SUCCESS) Serial.println("RADIO SEND FAILED (awaiting application retry)");
+    app.setPeerSignalBars(morse::signalBarsFromRssi(peerRssi_));
 }

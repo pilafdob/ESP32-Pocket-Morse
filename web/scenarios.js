@@ -131,9 +131,25 @@ export function runScenarios(wasm) {
     const chord = () => { engine.button(0, 0, true); engine.button(0, 1, true); engine.step(80);
       engine.button(0, 0, false); engine.button(0, 1, false); engine.step(60); };
     chord(); chord(); chord(); engine.step(500); check(engine.state(0).draft === 'E', 'Last sent not recalled');
-    chord(); chord(); chord(); chord(); check(engine.state(0).mode === 'DICTIONARY', 'Dictionary did not open');
+    chord(); chord(); chord(); chord(); check(engine.state(0).mode === 'COMPOSE', 'Dictionary opened before the gesture settled');
+    engine.step(800); check(engine.state(0).mode === 'DICTIONARY', 'Dictionary did not open after the delay');
     engine.press(0, 1); check(engine.state(0).dictionaryPage === 1, 'Dictionary did not page');
     chord(); check(engine.state(0).mode === 'COMPOSE', 'Dictionary did not close');
+  });
+  scenario('Display idle keeps the peer link alive and incoming traffic wakes the screen', () => {
+    engine.step(400);
+    check(engine.state(0).connected && engine.state(1).connected, 'Peer link not established');
+    engine.step(60000);
+    check(engine.state(0).displayIdle && engine.state(1).displayIdle, 'Displays did not enter idle');
+    check(engine.state(0).connected && engine.state(1).connected, 'Peer link expired during display idle');
+    engine.press(0, 0); // First press wakes Device A; it is intentionally consumed.
+    check(!engine.state(0).displayIdle, 'Button did not wake Device A');
+    engine.press(0, 0); engine.step(550);
+    check(engine.state(0).draft === 'E', 'Could not compose after waking Device A');
+    send(engine, 0); engine.step(300);
+    check(engine.state(1).receivedCount === 1 && !engine.state(1).displayIdle,
+      'Incoming encrypted message did not wake Device B');
+    check(engine.state(0).connected && engine.state(1).connected, 'Peer link did not remain/recover after wake');
   });
   scenario('Blinking draft cursor tracks insertion point after a space', () => {
     const caret = (x, y) => engine.frame(0).some(command => command.text === '_' && command.x === x && command.y === y);

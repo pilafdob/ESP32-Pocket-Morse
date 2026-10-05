@@ -8,18 +8,24 @@ constexpr size_t MaxText = 64;
 constexpr size_t MaxSequence = 6;
 constexpr uint32_t AutoConfirmMs = 500;
 constexpr uint32_t MultiTapMs = 430;
+constexpr uint32_t DictionaryTapDelayMs = 800;
 constexpr size_t HeaderSize = 17;
 constexpr size_t MaxPacket = HeaderSize + MaxText;
 constexpr uint32_t DebounceMs = 25;
 constexpr uint32_t LongPressMs = 800;
 constexpr uint32_t AckTimeoutMs = 700;
 constexpr uint8_t MaxAttempts = 4;
+constexpr uint32_t DisplayIdleMs = 60000;
+constexpr uint32_t DeepSleepAfterUnlinkMs = 300000;
+constexpr uint8_t ForcedDisplayIdleTaps = 5;
+constexpr uint32_t ForcedDisplayIdleSequenceGapMs = 600;
 
 char decode(const char* sequence);
 const char* encode(char character);
 size_t dictionaryCount();
 char dictionarySymbol(size_t index);
 const char* dictionaryCode(size_t index);
+uint8_t signalBarsFromRssi(int8_t rssi);
 enum class PacketType : uint8_t { Text = 1, Ack = 2, Ping = 3, Pong = 4 };
 struct Packet {
     PacketType type = PacketType::Text;
@@ -95,6 +101,9 @@ struct State {
     uint32_t duplicates = 0;
     uint32_t messageId = 0;
     bool peerConnected = false;
+    uint8_t peerSignalBars = 0;
+    bool displayIdle = false;
+    bool deepSleepRequested = false;
     bool cursorVisible = true;
     uint8_t progress = 0;
     uint8_t dictionaryPage = 0;
@@ -110,6 +119,8 @@ public:
     void tick(uint32_t now);
     void receive(const uint8_t* bytes, size_t length, uint32_t now);
     void setButtonProgress(uint8_t progress, bool held);
+    void setPeerSignalBars(uint8_t bars);
+    void forceDisplayIdle(uint32_t now);
     const State& state() const { return state_; }
 private:
     void commit();
@@ -128,6 +139,8 @@ private:
     uint32_t sentAt_ = 0;
     uint32_t pingAt_ = 0, peerAt_ = 0, pingId_ = 0;
     bool pingStarted_ = false;
+    uint32_t lastActivityAt_ = 0, unlinkedAt_ = 0;
+    bool peerEverConnected_ = false, unlinkTimerStarted_ = false;
     uint32_t symbolAt_ = 0, tapAt_ = 0;
     uint8_t tapCount_ = 0, buttonProgress_ = 0;
     bool buttonHeld_ = false;
@@ -149,6 +162,8 @@ private:
     } keys_[2];
     bool chord_ = false, chordLong_ = false;
     uint32_t chordAt_ = 0;
+    uint32_t lastDisplayIdleTapAt_ = 0;
+    uint8_t displayIdleTapCount_ = 0;
 };
 
 class IScreen {
@@ -157,6 +172,7 @@ public:
     virtual void clear(uint16_t color) = 0;
     virtual void text(int x, int y, const char* value, int size, uint16_t color) = 0;
     virtual void dial(int x, int y, uint8_t progress, uint16_t color) = 0;
+    virtual void signalBars(int, int, uint8_t, uint16_t) {}
 };
 enum class ScreenLayout : uint8_t { Portrait, Landscape };
 void render(const State& state, const char* name, IScreen& screen,

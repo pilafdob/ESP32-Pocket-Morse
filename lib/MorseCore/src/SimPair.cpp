@@ -62,6 +62,8 @@ void SimPair::tick(uint32_t now) {
         }
     }
     a_.tick(now_); b_.tick(now_);
+    a_.setPeerSignalBars(offline_ ? 0 : 3);
+    b_.setPeerSignalBars(offline_ ? 0 : 3);
 }
 bool SimPair::popEvent(Event& event) {
     if (eventRead_ == eventWrite_) return false;

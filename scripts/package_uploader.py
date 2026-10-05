@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import platform
 import shutil
 import sys
@@ -12,12 +13,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PROJECT_FILES = (
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
     "lib",
     "src",
+    "simulator",
+    "web",
+    "test",
+    "scripts",
+    "docs",
+    "diagram.json",
+    "wokwi.toml",
+    "package.json",
     "platformio.ini",
     "partitions_4mb.csv",
     "partitions_16mb.csv",
-    "scripts/display-setup.py",
+    "requirements-uploader.txt",
+    "requirements-packaging.txt",
 )
 
 
@@ -35,7 +48,8 @@ def copy_project(destination: Path) -> None:
         source = ROOT / item
         target = destination / item
         if source.is_dir():
-            shutil.copytree(source, target, ignore=shutil.ignore_patterns(".DS_Store", "__pycache__", "*.pyc"))
+            shutil.copytree(source, target, ignore=shutil.ignore_patterns(
+                ".DS_Store", "__pycache__", "*.pyc", "generated"))
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
@@ -59,7 +73,7 @@ def zip_tree(root: Path, archive: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dist", type=Path, default=ROOT / "dist")
-    parser.add_argument("--output", type=Path, default=ROOT / "build" / "uploader-release")
+    parser.add_argument("--output", type=Path, default=ROOT / "build" / "mac-uploader" / "release")
     args = parser.parse_args()
 
     windows = platform.system() == "Windows"
@@ -82,6 +96,12 @@ def main() -> int:
         shutil.copy2(helper, stage / helper.name)
         copy_project(stage / "project")
         shutil.copy2(ROOT / "LICENSE", stage / "LICENSE")
+        shutil.copy2(ROOT / "docs" / "UPLOADER_README.md", stage / "README.md")
+        version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
+        notes = ROOT / "docs" / "releases" / f"uploader-v{version}.md"
+        if not notes.is_file():
+            parser.error(f"Release notes missing for version {version}: {notes}")
+        shutil.copy2(notes, stage / "RELEASE_NOTES.md")
         zip_tree(stage, archive)
 
     print(f"Created {archive}")

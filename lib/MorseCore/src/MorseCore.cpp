@@ -96,6 +96,12 @@ bool MemoryInbox::erase(uint64_t ordinal) {
     messages_.erase(found); return true;
 }
 size_t dictionaryCount() { return sizeof(Alphabet) - 1; }
+uint8_t signalBarsFromRssi(int8_t rssi) {
+    if (rssi >= -55) return 3;
+    if (rssi >= -70) return 2;
+    if (rssi >= -85) return 1;
+    return 0;
+}
 char dictionarySymbol(size_t index) {
     if (index >= sizeof(Alphabet) - 1) return '\0';
     const char symbol = Alphabet[index];
@@ -255,7 +261,22 @@ void App::setButtonProgress(uint8_t progress, bool held) {
     buttonProgress_ = progress;
     buttonHeld_ = held;
 }
+void App::setPeerSignalBars(uint8_t bars) {
+    state_.peerSignalBars = state_.peerConnected ? (bars > 3 ? 3 : bars) : 0;
+}
+void App::forceDisplayIdle(uint32_t now) {
+    state_.displayIdle = true;
+    lastActivityAt_ = now;
+    tapCount_ = 0;
+}
 void App::press(Button button, bool longPress, uint32_t now) {
+    if (state_.displayIdle) {
+        state_.displayIdle = false;
+        lastActivityAt_ = now;
+        tapCount_ = 0;
+        return;
+    }
+    lastActivityAt_ = now;
     const bool confirm = button == Button::Both && !longPress;
     if (state_.mode == Mode::Dictionary) {
         if (button == Button::Both) state_.mode = Mode::Compose;
@@ -327,7 +348,6 @@ void App::press(Button button, bool longPress, uint32_t now) {
     if (button == Button::Both && !longPress) {
         ++tapCount_;
         tapAt_ = now;
-        if (tapCount_ >= 4) resolveTaps();
         return;
     }
     if (confirm) {
@@ -377,7 +397,12 @@ void App::attempt(uint32_t now) {
 }
 void App::tick(uint32_t now) {
     state_.cursorVisible = ((now / 500) & 1u) == 0;
-    if (tapCount_ && uint32_t(now - tapAt_) >= MultiTapMs) resolveTaps();
+    if (!state_.displayIdle && uint32_t(now - lastActivityAt_) >= DisplayIdleMs) {
+        state_.displayIdle = true;
+        tapCount_ = 0;
+    }
+    const uint32_t tapDelay = tapCount_ >= 4 ? DictionaryTapDelayMs : MultiTapMs;
+    if (tapCount_ && uint32_t(now - tapAt_) >= tapDelay) resolveTaps();
     if (state_.mode == Mode::Compose && state_.sequence[0] && !buttonHeld_ &&
         uint32_t(now - symbolAt_) >= AutoConfirmMs) {
         commit();
@@ -388,7 +413,16 @@ void App::tick(uint32_t now) {
         const uint32_t elapsed = now - symbolAt_;
         state_.progress = static_cast<uint8_t>(elapsed >= AutoConfirmMs ? 100 : elapsed * 100 / AutoConfirmMs);
     } else state_.progress = 0;
-    if (state_.peerConnected && uint32_t(now - peerAt_) >= 6000) state_.peerConnected = false;
+    if (state_.peerConnected && uint32_t(now - peerAt_) >= 6000) {
+        state_.peerConnected = false;
+        state_.peerSignalBars = 0;
+        unlinkedAt_ = now;
+        unlinkTimerStarted_ = true;
+    }
+    if (peerEverConnected_ && unlinkTimerStarted_ && !state_.deepSleepRequested &&
+        uint32_t(now - unlinkedAt_) >= DeepSleepAfterUnlinkMs) {
+        state_.deepSleepRequested = true;
+    }
     if (!pingStarted_ || uint32_t(now - pingAt_) >= 2000) {
         pingStarted_ = true; pingAt_ = now;
         if (++pingId_ == 0) ++pingId_;
@@ -418,6 +452,9 @@ void App::receive(const uint8_t* bytes, size_t length, uint32_t now) {
         if (pingStarted_ && packet.session == session_ && packet.id == pingId_ &&
             uint32_t(now - pingAt_) < 2000) {
             peerAt_ = now; state_.peerConnected = true;
+            peerEverConnected_ = true;
+            unlinkTimerStarted_ = false;
+            state_.deepSleepRequested = false;
         }
         return;
     }
@@ -431,6 +468,8 @@ void App::receive(const uint8_t* bytes, size_t length, uint32_t now) {
         }
         return;
     }
+    state_.displayIdle = false;
+    lastActivityAt_ = now;
     const auto result = inbox_->append(packet.session, packet.id, packet.text);
     if (result == StoreResult::Full) { notice("INBOX FULL - NO ACK"); return; }
     if (result == StoreResult::Error) { notice("INBOX STORAGE ERROR"); return; }
@@ -445,6 +484,7 @@ void App::receive(const uint8_t* bytes, size_t length, uint32_t now) {
     transport_.send(ack, ackLength);
 }
 void InputManager::sample(bool dot, bool dash, uint32_t now, App& app) {
+    if (app.state().mode == Mode::Dictionary) displayIdleTapCount_ = 0;
     const bool raw[] = {dot, dash};
     bool released[2] = {};
     for (unsigned i = 0; i < 2; ++i) {
@@ -467,10 +507,27 @@ void InputManager::sample(bool dot, bool dash, uint32_t now, App& app) {
         }
         // Consume both releases, even if the user releases one much earlier.
         if (!keys_[0].stable && !keys_[1].stable) {
-            if (!chordLong_) app.press(Button::Both, false, now);
+            if (!chordLong_) {
+                const bool waking = app.state().displayIdle;
+                app.press(Button::Both, false, now);
+                if (waking) {
+                    displayIdleTapCount_ = 0;
+                } else {
+                    if (displayIdleTapCount_ && uint32_t(now - lastDisplayIdleTapAt_) > ForcedDisplayIdleSequenceGapMs)
+                        displayIdleTapCount_ = 0;
+                    lastDisplayIdleTapAt_ = now;
+                    if (++displayIdleTapCount_ >= ForcedDisplayIdleTaps) {
+                        displayIdleTapCount_ = 0;
+                        app.forceDisplayIdle(now);
+                    }
+                }
+            } else {
+                displayIdleTapCount_ = 0;
+            }
             chord_ = false;
         }
     } else {
+        if (released[0] || released[1]) displayIdleTapCount_ = 0;
         for (unsigned i = 0; i < 2; ++i) {
             auto& key = keys_[i];
             if (released[i] && !key.longFired) app.press(static_cast<Button>(i), false, now);
@@ -491,13 +548,16 @@ void InputManager::sample(bool dot, bool dash, uint32_t now, App& app) {
     app.setButtonProgress(static_cast<uint8_t>(elapsed >= LongPressMs ? 100 : elapsed * 100 / LongPressMs), held);
 }
 void renderLandscape(const State& state, const char* name, IScreen& screen) {
-    (void)name;
     constexpr uint16_t white = 0xef7b, dim = 0x8c71, amber = 0xfdaa, mint = 0x7f36;
     screen.clear(0x0842);
+    if (state.displayIdle) return;
     char line[40];
-    screen.text(6, 5, state.peerConnected ? "LINK" : "UNLINK", 1, state.peerConnected ? mint : dim);
+    char identity[2] = {name && (name[0] == 'A' || name[0] == 'B') ? name[0] : '?', '\0'};
+    screen.text(6, 5, identity, 1, amber);
+    screen.text(18, 5, state.peerConnected ? "LINK" : "UNLINK", 1, state.peerConnected ? mint : dim);
     screen.text(110, 5, deliveryName(state.delivery), 1,
                 state.delivery == Delivery::Failed ? 0xfa69 : mint);
+    screen.signalBars(60, 5, state.peerConnected ? state.peerSignalBars : 0, mint);
     snprintf(line, sizeof(line), "%lu", static_cast<unsigned long>(state.inboxRemaining));
     screen.text(110, 14, line, 1, dim);
     screen.dial(228, 10, state.progress, amber);
@@ -557,15 +617,19 @@ void renderLandscape(const State& state, const char* name, IScreen& screen) {
     }
     if (state.notice[0]) screen.text(6, 123, state.notice, 1, amber);
 }
-void renderPortrait(const State& state, IScreen& screen) {
+void renderPortrait(const State& state, const char* name, IScreen& screen) {
     constexpr uint16_t white = 0xef7b, dim = 0x8c71, amber = 0xfdaa, mint = 0x7f36;
     screen.clear(0x0842);
+    if (state.displayIdle) return;
     char line[40];
-    screen.text(5, 5, state.peerConnected ? "LINK" : "UNLINK", 1,
+    char identity[2] = {name && (name[0] == 'A' || name[0] == 'B') ? name[0] : '?', '\0'};
+    screen.text(5, 5, identity, 1, amber);
+    screen.text(17, 5, state.peerConnected ? "LINK" : "UNLINK", 1,
                 state.peerConnected ? mint : dim);
     screen.dial(123, 11, state.progress, amber);
     screen.text(5, 21, deliveryName(state.delivery), 1,
                 state.delivery == Delivery::Failed ? 0xfa69 : mint);
+    screen.signalBars(59, 5, state.peerConnected ? state.peerSignalBars : 0, mint);
     snprintf(line, sizeof(line), "%lu", static_cast<unsigned long>(state.inboxRemaining));
     screen.text(5, 33, line, 1, dim);
     snprintf(line, sizeof(line), "%luN %luS",
@@ -638,8 +702,7 @@ void renderPortrait(const State& state, IScreen& screen) {
     }
 }
 void render(const State& state, const char* name, IScreen& screen, ScreenLayout layout) {
-    (void)name;
     if (layout == ScreenLayout::Landscape) renderLandscape(state, name, screen);
-    else renderPortrait(state, screen);
+    else renderPortrait(state, name, screen);
 }
 }

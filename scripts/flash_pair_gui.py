@@ -85,6 +85,8 @@ class FlashPairApp:
 
         self.flash_port = tk.StringVar()
         self.role = tk.StringVar(value="A")
+        self.role_hint = tk.StringVar(value="On-screen ID: A")
+        self.role.trace_add("write", self._update_role_hint)
         self.flash_size = tk.StringVar(value="4 MB")
         self.landscape = tk.BooleanVar(value=False)
         self.pair_a = tk.StringVar()
@@ -111,14 +113,15 @@ class FlashPairApp:
         options = ttk.Frame(flash)
         options.grid(row=2, column=0, columnspan=2, sticky="w")
         ttk.Label(options, text="Firmware role").pack(side="left")
-        ttk.Combobox(options, textvariable=self.role, values=("A", "B"), state="readonly", width=5).pack(side="left", padx=(8, 18))
+        ttk.Combobox(options, textvariable=self.role, values=("A", "B"), state="readonly", width=5).pack(side="left", padx=(8, 8))
+        ttk.Label(options, textvariable=self.role_hint).pack(side="left", padx=(0, 18))
         ttk.Label(options, text="Board flash").pack(side="left")
         ttk.Combobox(options, textvariable=self.flash_size, values=("4 MB", "16 MB"), state="readonly", width=8).pack(side="left", padx=(8, 18))
         ttk.Checkbutton(options, text="Landscape display", variable=self.landscape).pack(side="left")
 
         self.upload_button = ttk.Button(flash, text="Build & upload firmware", command=self.upload)
         self.upload_button.grid(row=3, column=0, sticky="w", pady=(12, 0))
-        ttk.Label(flash, text="4 MB is the safe default. Select 16 MB only after reading the chip ID.", wraplength=560).grid(row=4, column=0, columnspan=2, sticky="w", pady=(9, 0))
+        ttk.Label(flash, text="The selected role appears before LINK/UNLINK on the device. 4 MB is the safe default; select 16 MB only after reading the chip ID.", wraplength=560).grid(row=4, column=0, columnspan=2, sticky="w", pady=(9, 0))
         flash.columnconfigure(0, weight=1)
 
         pairing = ttk.LabelFrame(body, text="2 · Pair the two boards", padding=12)
@@ -142,6 +145,9 @@ class FlashPairApp:
         self.output = tk.Text(body, height=11, wrap="word", state="disabled")
         self.output.pack(fill="both", expand=True)
         ttk.Label(body, text="Pairing refuses configured boards and will not erase a used or corrupt inbox.", wraplength=620).pack(anchor="w", pady=(8, 0))
+
+    def _update_role_hint(self, *_args: object) -> None:
+        self.role_hint.set(f"On-screen ID: {self.role.get()}")
 
     def _append(self, text: str) -> None:
         self.output.configure(state="normal")

@@ -111,6 +111,14 @@ function paint() {
           ctx.beginPath(); ctx.arc(draw.x, draw.y, 8, 0, Math.PI * 2); ctx.strokeStyle = '#555'; ctx.lineWidth = 0.5; ctx.stroke();
           continue;
         }
+          if (draw.bars) {
+            for (let bar = 0; bar < 3; bar++) {
+              const height = (bar + 1) * 2;
+              ctx.fillStyle = color(bar < draw.level ? draw.color : 0x4a69);
+              ctx.fillRect(draw.x + bar * 4, draw.y + 6 - height, 3, height);
+            }
+            continue;
+          }
         ctx.font = `${draw.size * 8}px monospace`;
         // Fixed six-pixel advance, matching the firmware GLCD layout.
         for (let i = 0; i < draw.text.length; i++) ctx.fillText(draw.text[i], draw.x + i * draw.size * 6, draw.y);
@@ -119,8 +127,8 @@ function paint() {
     }
     const status = view.querySelector('.delivery'); status.textContent = state.delivery; status.dataset.state = state.delivery;
     view.querySelector('.attempts').textContent = state.attempts ? `Attempt ${state.attempts}/4 · message #${state.messageId}` : 'No message sent';
-    const badge = view.querySelector('.peer-badge'); badge.textContent = state.connected ? 'LINK · PEER ONLINE' : 'UNLINK · NO PEER REPLY'; badge.classList.toggle('connected', state.connected);
-    const accessible = `Device ${d ? 'B' : 'A'}. ${state.connected ? 'Connected' : 'Disconnected'}. ${state.mode}. ${state.delivery}. ${state.unreadCount} unread of ${state.inboxCount} saved; approximately ${state.inboxRemaining} slots remain. Morse ${state.sequence || 'empty'}. Draft ${state.draft || 'empty'}.${state.mode === 'READING' ? ` Message ${state.inboxPosition} of ${state.inboxCount}. Received ${state.received}.` : ''} ${state.notice}`;
+    const badge = view.querySelector('.peer-badge'); badge.textContent = state.displayIdle ? 'DISPLAY IDLE · RADIO ON' : (state.connected ? 'LINK · PEER ONLINE' : 'UNLINK · NO PEER REPLY'); badge.classList.toggle('connected', state.connected);
+    const accessible = `Device ${d ? 'B' : 'A'}. ${state.displayIdle ? 'Display idle; ESP-NOW radio remains active' : (state.connected ? 'Connected' : 'Disconnected')}. Signal strength ${state.signalBars} of 3 bars. ${state.mode}. ${state.delivery}. ${state.unreadCount} unread of ${state.inboxCount} saved; approximately ${state.inboxRemaining} slots remain. Morse ${state.sequence || 'empty'}. Draft ${state.draft || 'empty'}.${state.mode === 'READING' ? ` Message ${state.inboxPosition} of ${state.inboxCount}. Received ${state.received}.` : ''} ${state.notice}`;
     if (accessible !== lastAccessible[d]) { view.querySelector('.screen-reader').textContent = accessible; lastAccessible[d] = accessible; }
   }
   logEvents(engine.events());

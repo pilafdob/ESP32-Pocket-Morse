@@ -5,6 +5,10 @@
 #include <monocypher.h>
 #include <InboxJournal.h>
 #include <esp_system.h>
+#ifndef MORSE_WOKWI
+#include <esp_sleep.h>
+#include <driver/rtc_io.h>
+#endif
 #ifdef MORSE_WOKWI
 #include <SimPair.h>
 // Wokwi runs one ESP32; the second App lives in the in-memory link, not a fake radio peer.
@@ -23,6 +27,7 @@ morse::App* realApp = nullptr;
 morse::InputManager inputs;
 TFT_eSPI tft;
 TFT_eSprite frame(&tft);
+bool suppressDashWakePress = false;
 class TftScreen : public morse::IScreen {
 public:
     void clear(uint16_t color) override { frame.fillSprite(color); }
@@ -38,6 +43,13 @@ public:
             frame.drawPixel(x + int(roundf(8 * cosf(angle))), y + int(roundf(8 * sinf(angle))), color);
         }
     }
+    void signalBars(int x, int y, uint8_t bars, uint16_t color) override {
+        for (int index = 0; index < 3; ++index) {
+            const int height = (index + 1) * 2;
+            frame.fillRect(x + index * 4, y + 6 - height, 3, height,
+                           index < bars ? color : TFT_DARKGREY);
+        }
+    }
 } screen;
 bool framebufferReady = false;
 #endif
@@ -45,6 +57,36 @@ uint32_t lastDraw = 0;
 char lastStatus[384] = {};
 
 #ifndef MORSE_WOKWI
+void enterDeepSleep() {
+    // GPIO35 is the T-Display DASH key. Unlike GPIO0, it cannot select the
+    // ESP32 serial bootloader, and the board provides its external pull-up.
+    // Do not arm a level wake while the key is already held: EXT0 would wake
+    // immediately and make the device appear not to stay asleep.
+    if (digitalRead(config::DashPin) == LOW) return;
+
+    Serial.println("PEER LOST: entering deep sleep; press DASH to wake.");
+    const gpio_num_t wakePin = static_cast<gpio_num_t>(config::DashPin);
+    if (!esp_sleep_is_valid_wakeup_gpio(wakePin)) {
+        Serial.println("DASH is not a valid deep-sleep wake pin; staying awake.");
+        return;
+    }
+    if (rtc_gpio_init(wakePin) != ESP_OK ||
+        rtc_gpio_set_direction(wakePin, RTC_GPIO_MODE_INPUT_ONLY) != ESP_OK ||
+        esp_sleep_enable_ext0_wakeup(wakePin, 0) != ESP_OK) {
+        rtc_gpio_deinit(wakePin);
+        Serial.println("Could not configure DASH deep-sleep wake; staying awake.");
+        return;
+    }
+    if (framebufferReady) {
+        frame.fillSprite(TFT_BLACK);
+        frame.pushSprite(0, 0);
+    }
+    digitalWrite(TFT_BL, !TFT_BACKLIGHT_ON);
+    Serial.flush();
+    WiFi.mode(WIFI_OFF);
+    esp_deep_sleep_start();
+}
+
 void provisioning() {
     static char command[100] = {};
     static size_t used = 0;
@@ -91,6 +133,11 @@ void provisioning() {
 
 void setup() {
     Serial.begin(115200);
+#ifndef MORSE_WOKWI
+    suppressDashWakePress = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0;
+    if (suppressDashWakePress)
+        rtc_gpio_deinit(static_cast<gpio_num_t>(config::DashPin));
+#endif
     pinMode(config::DotPin, INPUT_PULLUP);
     pinMode(config::DashPin, INPUT);
 #ifndef MORSE_WOKWI
@@ -103,6 +150,8 @@ void setup() {
     realApp = &application;
     application.attachInbox(inboxJournal); // Never fall back to a volatile ACKed inbox on hardware.
     tft.init();
+    pinMode(TFT_BL, OUTPUT);
+    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
 #ifdef MORSE_LANDSCAPE
     tft.setRotation(1);
 #else
@@ -141,17 +190,29 @@ void loop() {
 #else
     auto& app = *realApp;
     provisioning();
-    inputs.sample(digitalRead(config::DotPin) == LOW, digitalRead(config::DashPin) == LOW, now, app);
+    const bool dashPressed = digitalRead(config::DashPin) == LOW;
+    if (suppressDashWakePress && !dashPressed) suppressDashWakePress = false;
+    inputs.sample(digitalRead(config::DotPin) == LOW,
+                  dashPressed && !suppressDashWakePress, now, app);
     radio.poll(app, now);
     app.tick(now);
+    const auto& powerState = app.state();
+    static bool displayIdle = false;
+    if (displayIdle != powerState.displayIdle) {
+        displayIdle = powerState.displayIdle;
+        digitalWrite(TFT_BL, displayIdle ? !TFT_BACKLIGHT_ON : TFT_BACKLIGHT_ON);
+        lastStatus[0] = '\0';
+    }
+    if (powerState.deepSleepRequested) enterDeepSleep();
+    if (displayIdle) delay(10);
 #endif
     if (uint32_t(now - lastDraw) < 40) return;
     lastDraw = now;
     const auto& s = app.state();
     char status[384];
-    snprintf(status, sizeof(status), "%s|%s|%s|%s|%s|%u|%lu|%lu|%s|%s|%u|%u|%u|%u|%lu|%lu|%lu|%lu|%llu",
+    snprintf(status, sizeof(status), "%s|%s|%s|%s|%s|%u|%lu|%lu|%s|%s|%u|%u|%u|%u|%u|%lu|%lu|%lu|%lu|%llu",
         s.sequence, s.draft, s.received, s.lastSent, morse::deliveryName(s.delivery), s.attempts,
-        static_cast<unsigned long>(s.receivedCount), static_cast<unsigned long>(s.messageId), s.notice, morse::modeName(s.mode), s.peerConnected, s.progress, s.dictionaryPage, s.cursorVisible,
+        static_cast<unsigned long>(s.receivedCount), static_cast<unsigned long>(s.messageId), s.notice, morse::modeName(s.mode), s.peerConnected, s.displayIdle, s.progress, s.dictionaryPage, s.cursorVisible,
         static_cast<unsigned long>(s.unreadCount), static_cast<unsigned long>(s.inboxCount),
         static_cast<unsigned long>(s.inboxPosition), static_cast<unsigned long>(s.inboxRemaining),
         static_cast<unsigned long long>(s.selectedOrdinal));
@@ -159,7 +220,7 @@ void loop() {
     snprintf(lastStatus, sizeof(lastStatus), "%s", status);
     Serial.printf("MODE:%s STATUS:%s ATTEMPT:%u\n", morse::modeName(s.mode), morse::deliveryName(s.delivery), s.attempts);
 #ifndef MORSE_WOKWI
-    if (framebufferReady) {
+    if (framebufferReady && !s.displayIdle) {
         morse::render(s, config::DeviceName, screen,
 #ifdef MORSE_LANDSCAPE
                       morse::ScreenLayout::Landscape

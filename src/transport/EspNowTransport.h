@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <MorseCore.h>
@@ -18,11 +19,13 @@ private:
     struct Received { uint8_t bytes[morse::SecureSize]; size_t length; };
     static void receiveCallback(const uint8_t* mac, const uint8_t* bytes, int length);
     static void sendCallback(const uint8_t* mac, esp_now_send_status_t status);
+    static void promiscuousCallback(void* packet, wifi_promiscuous_pkt_type_t type);
     static EspNowTransport* instance_;
     uint8_t peer_[6] = {};
     QueueHandle_t incoming_ = nullptr;
     QueueHandle_t outcomes_ = nullptr;
     bool ready_ = false;
+    volatile int8_t peerRssi_ = -127;
     PairStore& store_;
     morse::SecureChannel secure_;
 };

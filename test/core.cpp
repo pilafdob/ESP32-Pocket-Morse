@@ -9,6 +9,8 @@
 #include <vector>
 #include <utility>
 #include <algorithm>
+#include <tuple>
+#include <string>
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #include "../lib/Monocypher/tests/vectors.h"
@@ -113,6 +115,10 @@ void usability() {
     assert(strcmp(app.state().draft, "E") == 0);
     app.press(Button::Both, false, 6700); app.press(Button::Both, false, 6800);
     app.press(Button::Both, false, 6900); app.press(Button::Both, false, 7000);
+    assert(app.state().mode == Mode::Compose);
+    app.tick(7000 + DictionaryTapDelayMs - 1);
+    assert(app.state().mode == Mode::Compose);
+    app.tick(7000 + DictionaryTapDelayMs);
     assert(app.state().mode == Mode::Dictionary);
     app.press(Button::Dash, false, 7000); assert(app.state().dictionaryPage == 1);
     app.press(Button::Dot, false, 7100); assert(app.state().dictionaryPage == 0);
@@ -189,18 +195,29 @@ void journalTests() {
 struct BoundsScreen : IScreen {
     int width, height;
     std::vector<std::pair<int, int>> underscores;
+    std::vector<std::tuple<int, int, std::string>> labels;
+    std::vector<std::pair<int, int>> signalBarPositions;
     explicit BoundsScreen(int w, int h) : width(w), height(h) {}
     void clear(uint16_t) override {}
     void text(int x, int y, const char* value, int size, uint16_t) override {
         assert(x >= 0 && y >= 0 && x + int(strlen(value)) * 6 * size <= width);
         assert(y + 8 * size <= height);
+        labels.emplace_back(x, y, value);
         if (strcmp(value, "_") == 0) underscores.emplace_back(x, y);
     }
     void dial(int x, int y, uint8_t progress, uint16_t) override {
         assert(x >= 8 && x + 8 < width && y >= 8 && y + 8 < height && progress <= 100);
     }
+    void signalBars(int x, int y, uint8_t bars, uint16_t) override {
+        assert(x >= 0 && x + 11 <= width && y >= 0 && y + 6 <= height && bars <= 3);
+        signalBarPositions.emplace_back(x, y);
+    }
 };
 void screenLayouts() {
+    assert(signalBarsFromRssi(-50) == 3);
+    assert(signalBarsFromRssi(-60) == 2);
+    assert(signalBarsFromRssi(-75) == 1);
+    assert(signalBarsFromRssi(-90) == 0);
     State state;
     state.inboxCount = 101234; state.unreadCount = 101234;
     state.inboxPosition = 101234; state.inboxRemaining = 101234;
@@ -223,7 +240,93 @@ void screenLayouts() {
     assert(std::find(landscape.underscores.begin(), landscape.underscores.end(),
         std::make_pair(strlen(state.draft) < 38 ? 6 + int(strlen(state.draft)) * 6 : 6 + int(strlen(state.draft) - 38) * 6,
                        strlen(state.draft) < 38 ? 56 : 66)) != landscape.underscores.end());
+    auto hasLabel = [](const BoundsScreen& screen, int x, const char* value) {
+        return std::find(screen.labels.begin(), screen.labels.end(), std::make_tuple(x, 5, std::string(value))) != screen.labels.end();
+    };
+    for (const char* device : {"A", "B"}) {
+        for (bool connected : {false, true}) {
+            state.peerConnected = connected;
+            const char* linkText = connected ? "LINK" : "UNLINK";
+            BoundsScreen portraitRole(135, 240), landscapeRole(240, 135);
+            render(state, device, portraitRole, ScreenLayout::Portrait);
+            render(state, device, landscapeRole, ScreenLayout::Landscape);
+            assert(hasLabel(portraitRole, 5, device) && hasLabel(portraitRole, 17, linkText));
+            assert(hasLabel(landscapeRole, 6, device) && hasLabel(landscapeRole, 18, linkText));
+            assert(std::find(portraitRole.signalBarPositions.begin(), portraitRole.signalBarPositions.end(),
+                std::make_pair(59, 5)) != portraitRole.signalBarPositions.end());
+            assert(std::find(landscapeRole.signalBarPositions.begin(), landscapeRole.signalBarPositions.end(),
+                std::make_pair(60, 5)) != landscapeRole.signalBarPositions.end());
+        }
+    }
     puts("PASS portrait and preserved landscape bounds across all screen modes/dictionary pages");
+}
+void powerModes() {
+    Capture idleTransport; App idle(idleTransport, 77);
+    idle.tick(0);
+    Packet pong; pong.type = PacketType::Pong; pong.session = 77; pong.id = 1;
+    inject(idle, pong, 10);
+    for (uint32_t at = 2000; at <= DisplayIdleMs; at += 2000) {
+        idle.tick(at);
+        Packet ping;
+        assert(!idleTransport.sent.empty() && deserialize(idleTransport.sent.back().data(),
+            idleTransport.sent.back().size(), ping) && ping.type == PacketType::Ping);
+        pong.id = ping.id;
+        inject(idle, pong, at + 10);
+    }
+    assert(idle.state().displayIdle && idle.state().peerConnected && idleTransport.sent.size() >= 30);
+    Packet message; message.session = 88; message.id = 1; strcpy(message.text, "WAKE");
+    inject(idle, message, DisplayIdleMs + 20);
+    assert(!idle.state().displayIdle && idle.state().peerConnected && idle.state().inboxCount == 1);
+
+    Capture peerTransport; App peer(peerTransport, 99);
+    peer.tick(0);
+    pong = {}; pong.type = PacketType::Pong; pong.session = 99; pong.id = 1;
+    inject(peer, pong, 100);
+    assert(peer.state().peerConnected && !peer.state().deepSleepRequested);
+    peer.tick(6100);
+    assert(!peer.state().peerConnected && !peer.state().deepSleepRequested);
+    peer.tick(6100 + DeepSleepAfterUnlinkMs - 1);
+    assert(!peer.state().deepSleepRequested);
+    peer.tick(6100 + DeepSleepAfterUnlinkMs);
+    assert(peer.state().deepSleepRequested);
+
+    Capture recoveredTransport; App recovered(recoveredTransport, 100);
+    recovered.tick(0);
+    Packet currentPing;
+    assert(deserialize(recoveredTransport.sent.back().data(), recoveredTransport.sent.back().size(), currentPing));
+    pong = {}; pong.type = PacketType::Pong; pong.session = 100; pong.id = currentPing.id;
+    inject(recovered, pong, 10);
+    recovered.tick(6010);
+    assert(!recovered.state().peerConnected);
+    recovered.tick(8010);
+    assert(deserialize(recoveredTransport.sent.back().data(), recoveredTransport.sent.back().size(), currentPing));
+    pong.id = currentPing.id;
+    inject(recovered, pong, 8020);
+    recovered.tick(14020);
+    assert(!recovered.state().peerConnected && !recovered.state().deepSleepRequested);
+    recovered.tick(6100 + DeepSleepAfterUnlinkMs);
+    assert(!recovered.state().deepSleepRequested); // relinking restarts the five-minute grace period
+    recovered.tick(14020 + DeepSleepAfterUnlinkMs);
+    assert(recovered.state().deepSleepRequested);
+
+    Capture forcedTransport; App forced(forcedTransport, 123); InputManager keys;
+    uint32_t now = 100;
+    for (unsigned tap = 0; tap < ForcedDisplayIdleTaps; ++tap) {
+        keys.sample(true, true, now, forced); now += DebounceMs;
+        keys.sample(true, true, now, forced); now += 10;
+        keys.sample(false, false, now, forced); now += DebounceMs;
+        keys.sample(false, false, now, forced); now += 100;
+    }
+    assert(forced.state().displayIdle);
+
+    Capture dictionaryTransport; App dictionary(dictionaryTransport, 124);
+    for (unsigned tap = 0; tap < 4; ++tap) dictionary.press(Button::Both, false, tap * 100);
+    assert(dictionary.state().mode == Mode::Compose);
+    dictionary.tick(3 * 100 + DictionaryTapDelayMs - 1);
+    assert(dictionary.state().mode == Mode::Compose);
+    dictionary.tick(3 * 100 + DictionaryTapDelayMs);
+    assert(dictionary.state().mode == Mode::Dictionary);
+    puts("PASS display-idle heartbeat continuity, receive wake, deep-sleep timeout, five-tap idle and delayed dictionary");
 }
 void inputs() {
     Capture t; App app(t, 10); InputManager keys;
@@ -342,7 +445,7 @@ void security() {
 }
 void storageTests();
 int main() {
-    vectors(); codecs(); inputs(); compositionAndInbox(); deletionFeatures(); reliability(); failuresAndHeartbeat(); security(); usability(); journalTests(); screenLayouts();
+    vectors(); codecs(); inputs(); compositionAndInbox(); deletionFeatures(); reliability(); failuresAndHeartbeat(); security(); usability(); journalTests(); screenLayouts(); powerModes();
     storageTests();
     puts("All 11 native test groups passed.");
 }
