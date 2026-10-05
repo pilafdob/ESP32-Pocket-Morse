@@ -9,10 +9,10 @@
 #include <vector>
 #include <utility>
 #include <algorithm>
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include "../lib/Monocypher/tests/vectors.h"
-#pragma clang diagnostic pop
+#pragma GCC diagnostic pop
 using namespace morse;
 struct Capture : ITransport {
     std::vector<std::vector<uint8_t>> sent;

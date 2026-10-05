@@ -26,7 +26,8 @@ void InboxJournal::remember(const InboxMessage& message) {
 }
 bool InboxJournal::begin(const uint8_t pairKey[32], uint8_t role) {
     ready_ = false; count_ = unread_ = freeSlots_ = 0; nextOrdinal_ = 1;
-    freeOffset_ = UINT32_MAX; memset(recent_, 0, sizeof(recent_));
+    freeOffset_ = UINT32_MAX;
+    for (auto& recent : recent_) recent = {};
     if (!pairKey || role > 1 || storage_.size() % InboxRecordSize) return false;
     deriveKey(pairKey, role ? "Morse-v3 inbox B" : "Morse-v3 inbox A", key_);
     for (uint32_t offset = 0; offset < storage_.size(); offset += InboxRecordSize) {

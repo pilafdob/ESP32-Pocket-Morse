@@ -261,7 +261,7 @@ void App::press(Button button, bool longPress, uint32_t now) {
         if (button == Button::Both) state_.mode = Mode::Compose;
         else if (!longPress && button == Button::Dot && state_.dictionaryPage) --state_.dictionaryPage;
         else if (!longPress && button == Button::Dash &&
-                 (state_.dictionaryPage + 1) * 8 < dictionaryCount()) ++state_.dictionaryPage;
+             static_cast<size_t>(state_.dictionaryPage + 1) * 8 < dictionaryCount()) ++state_.dictionaryPage;
         return;
     }
     if (state_.mode == Mode::Incoming) {

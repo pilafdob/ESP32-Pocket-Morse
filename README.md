@@ -1,5 +1,109 @@
 # Pocket Morse Communicators
 
+Created by **Pilafdob**. Build a pair of pocket Morse communicators with the **original LILYGO TTGO T-Display ESP32** (the 135 × 240 ST7789 model with two onboard buttons). The devices send encrypted messages directly over ESP-NOW; no router, external buttons, LED, or buzzer is needed.
+
+> This project targets the original TTGO T-Display, not the T-Display S3 or other similarly named boards. The physical hardware path is intended for this board; the browser lab is a simulator, not a radio or flash-storage emulator.
+
+## Demo
+
+The screenshots show the browser simulator after Device A sends `HELLO` and Device B receives it. They are generated from the shared C++ application core.
+
+![Pocket Morse simulator in portrait layout, with HELLO delivered and waiting in Device B's inbox](docs/images/simulator-portrait.png)
+
+![Pocket Morse simulator in landscape preview, showing the same encrypted delivery](docs/images/simulator-landscape.png)
+
+## Parts and tools
+
+- Two original LILYGO TTGO T-Display ESP32 boards. Confirm the display and flash size before building.
+- USB data cables for flashing and one-time pairing.
+- [PlatformIO Core](https://platformio.org/install/cli) for firmware builds.
+- [Node.js](https://nodejs.org/) for the browser simulator and tests.
+- [Emscripten](https://emscripten.org/docs/getting_started/downloads.html) with `em++` on `PATH` to rebuild the WebAssembly simulator (tested with 4.0.23).
+
+## Build and try the simulator
+
+```sh
+npm run build
+npm test
+npm start
+```
+
+Open the local URL printed by `npm start`. Select **Try HELLO** to see delivery and the encrypted packet trace. The simulator runs two copies of the C++ application with a deterministic in-memory link; it does not test actual ESP-NOW radio, TFT optics, or LittleFS behavior.
+
+## Build the firmware
+
+The default targets use a 4 MB-safe partition layout:
+
+```sh
+pio run -e device_a -e device_b
+```
+
+For a confirmed 16 MB device, use the larger inbox partition:
+
+```sh
+pio run -e device_a_16mb -e device_b_16mb
+```
+
+Landscape firmware variants are also available as `device_a_landscape` / `device_b_landscape` and `device_a_16mb_landscape` / `device_b_16mb_landscape`. Build the Wokwi target with `pio run -e wokwi`.
+
+### Check flash size first
+
+Do not infer flash size from a listing or seller description. Connect each board and check it with `esptool`:
+
+```sh
+python3 -m pip install esptool
+python3 -m esptool --port /dev/cu.YOUR_PORT flash_id
+```
+
+**Never flash a 16 MB partition table to a 4 MB board.** If the board reports 4 MB or you cannot verify its size, use the default `device_a` and `device_b` targets.
+
+## Flash and pair two devices
+
+Flash a different role to each board. Replace the port names with the ports reported on your computer:
+
+```sh
+pio run -e device_a -t upload --upload-port /dev/cu.YOUR_A_PORT
+pio run -e device_b -t upload --upload-port /dev/cu.YOUR_B_PORT
+```
+
+For confirmed 16 MB boards, use `device_a_16mb` and `device_b_16mb` instead. Then install the pairing tool's serial dependency and pair both connected boards in one command:
+
+```sh
+python3 -m pip install pyserial
+python3 scripts/provision_pair.py --a /dev/cu.YOUR_A_PORT --b /dev/cu.YOUR_B_PORT
+```
+
+Keep both serial ports free of monitor programs during pairing. Pairing creates a fresh random key and provisions it to these two boards; routine pairing will not overwrite an existing pair or format a used inbox. There is no recovery copy of the key. Replacing a board or erasing its pair data requires a deliberate recovery and re-pair of both devices.
+
+The onboard GPIO0 button is DOT and GPIO35 is DASH. Release GPIO0 while powering up or resetting; holding it low selects the ESP32 serial bootloader. No external button wiring is required.
+
+## Controls
+
+| Gesture | Action |
+| --- | --- |
+| Tap DOT / DASH | Enter a Morse symbol |
+| Wait 0.5 seconds | Confirm the letter |
+| Tap BOTH | Confirm a pending letter, or add a space |
+| Hold BOTH for 0.8 seconds | Send or retry the draft |
+| Hold DASH / DOT | Erase a letter / erase the last word |
+| Double-tap BOTH | Open the inbox |
+| Triple-tap BOTH | Recall the last sent text when the draft is empty |
+| Quadruple-tap BOTH | Open the Morse dictionary |
+
+The receiver must tap BOTH to reveal a new message. While reading, DOT/DASH browse saved messages; hold DOT to delete the current one. An authenticated receipt means the encrypted record was written and read back successfully, not that a person has read it. The physical inbox is stored in flash; drafts and last-sent recall are held in RAM and are lost on restart.
+
+## Safety and security notes
+
+The project uses authenticated encryption and per-pair keys, but it is not independently security-audited and does not enable ESP32 Secure Boot or Flash Encryption. Physical extraction of a board's flash/NVS can expose its pair key. Do not use this prototype for high-stakes secrets or life-safety communication.
+
+Changing partition layouts on an already-paired device has not been migration-tested. Back up what matters and do not assume messages or pairing data survive a partition-table change. The Wokwi target and browser simulator do not verify physical radio delivery, flash wear, power-loss behavior, or real display output.
+
+## Tests and CI
+
+`npm test` runs native C++ sanitizer tests and WebAssembly scenarios. GitHub Actions builds all firmware variants and runs the test suite on pushes and pull requests. See [CI workflow](.github/workflows/ci.yml).
+
+Firmware dependencies include [TFT_eSPI](https://github.com/Bodmer/TFT_eSPI); cryptographic primitives are provided by [Monocypher](lib/Monocypher/LICENCE.md). Project license: [MIT](LICENSE).# Pocket Morse Communicators
+
 Created by **Pilafdob**, Pocket Morse Communicators let two LILYGO TTGO T-Display ESP32 boards exchange **encrypted Morse messages** over ESP-NOW using only their onboard buttons. The browser-based simulator runs the same portable C++ core through WebAssembly.
 
 ## Controls
