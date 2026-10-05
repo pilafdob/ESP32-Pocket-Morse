@@ -64,11 +64,15 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           VERSION="${TAG#uploader-v}"
+          PRERELEASE_ARGS=()
+          if [[ "$VERSION" == *-* ]]; then
+            PRERELEASE_ARGS+=(--prerelease)
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release-assets/*.zip --clobber
           else
             gh release create "$TAG" release-assets/*.zip \
-              --title "Pocket Morse Uploader v$VERSION (Beta)" \
-              --prerelease --generate-notes
+              --title "Pocket Morse Uploader v$VERSION" \
+              --generate-notes "${PRERELEASE_ARGS[@]}"
 
           fi

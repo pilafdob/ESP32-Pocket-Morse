@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are currently considered for the latest beta release, **v0.1.0-beta.1**, and the current `main` branch. Older beta builds are unsupported; update to the latest release before reporting an issue when possible.
+Security fixes are considered for the latest published release and the repository's default branch. Older releases are unsupported; update to the latest release before reporting an issue when possible.
 
 ## Report a vulnerability
 
@@ -10,7 +10,7 @@ Please report suspected vulnerabilities privately through [GitHub's private vuln
 
 Include the affected release or commit, hardware/operating system where relevant, impact, and clear reproduction steps. Redact pair keys, serial output containing sensitive data, MAC addresses where they identify a device, and any personal information.
 
-There is no bug bounty. The maintainer will make a best effort to acknowledge reports within seven days and coordinate a fix and disclosure timeline with the reporter. Please allow time for investigation; this is a small, unaudited beta project.
+There is no bug bounty. The maintainer will make a best effort to acknowledge reports within seven days and coordinate a fix and disclosure timeline with the reporter. Please allow time for investigation; this is an early-stage, unaudited project.
 
 ## Security scope and limitations
 
