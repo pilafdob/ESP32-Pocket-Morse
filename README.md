@@ -1,6 +1,6 @@
 # Pocket Morse Communicators
 
-Created by **Filip**. Build a pair of pocket Morse communicators with the **original LILYGO TTGO T-Display ESP32** (the 135 × 240 ST7789 model with two onboard buttons). The devices send encrypted messages directly over ESP-NOW; no router, external buttons, LED, or buzzer is needed.
+Created by **Filip**, Web-Simulator built by AI. Build a pair of pocket Morse communicators with the **original LILYGO TTGO T-Display ESP32** (the 135 × 240 ST7789 model with two onboard buttons). The devices send encrypted messages directly over ESP-NOW; no router, external buttons, LED, or buzzer is needed.
 
 > This project targets the original TTGO T-Display, not the T-Display S3 or other similarly named boards. The browser lab is a simulator, not a radio or flash-storage emulator.
 
