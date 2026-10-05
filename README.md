@@ -22,9 +22,9 @@ The screenshots show Device A delivering `HELLO` and Device B receiving a new in
 
 ## Flash and pair with the desktop utility
 
-Windows and macOS release archives are published on the [GitHub Releases page](https://github.com/pilafdob/ESP32-Pocket-Morse/releases). Extract the complete archive and run `PocketMorseUploader.exe` on Windows or open `PocketMorseUploader.app` on macOS. Keep `provision_pair` and the `project` folder beside the app; the archive is a unit. These unsigned builds may trigger the operating system's download warning.
+The first desktop release is **v0.1.0-beta.1**. Download the Windows or macOS archive from the [GitHub Releases page](https://github.com/pilafdob/ESP32-Pocket-Morse/releases). Extract the complete archive and run `PocketMorseUploader.exe` on Windows or open `PocketMorseUploader.app` on macOS. Keep `provision_pair` and the `project` folder beside the app; the archive is a unit. This beta is for testing and feedback; the unsigned builds may trigger the operating system's download warning.
 
-The desktop app needs PlatformIO Core installed and its `pio` command available on `PATH`. It builds firmware locally for the selected board; the release archive includes the firmware source. Pairing uses the included helper and bundled pyserial. Release assets are built on native Windows/macOS runners and attached when an `uploader-v*` tag is pushed.
+The desktop app needs PlatformIO Core installed and its `pio` command available on `PATH`. It builds firmware locally for the selected board; the release archive includes the firmware source. Pairing uses the included helper and bundled pyserial. Release assets are built on native Windows/macOS runners and attached when an `uploader-v*` tag is pushed. The beta tag is `uploader-v0.1.0-beta.1`.
 
 To build the desktop app yourself, install packaging dependencies and run the PyInstaller commands from the workflow in `.github/workflows/uploader-release.yml`; the workflow builds each operating system's native app on its own runner.
 

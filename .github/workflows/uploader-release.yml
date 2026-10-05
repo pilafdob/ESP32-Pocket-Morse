@@ -62,9 +62,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
+          VERSION="${TAG#uploader-v}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release-assets/*.zip --clobber
           else
             gh release create "$TAG" release-assets/*.zip \
-              --title "Pocket Morse Uploader $TAG" --generate-notes
+              --title "Pocket Morse Uploader v$VERSION (Beta)" \
+              --prerelease --generate-notes
+
           fi
