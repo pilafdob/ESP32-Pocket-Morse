@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are considered for the latest published release and the repository's default branch. Older releases are unsupported; update to the latest release before reporting an issue when possible.
+Security fixes are considered for the latest published release, the latest beta release, and the repository's default branch. Older releases and older beta builds are unsupported; update to the latest release before reporting an issue when possible.
 
 ## Report a vulnerability
 
