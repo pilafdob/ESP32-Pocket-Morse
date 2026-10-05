@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are currently considered for the latest beta release, **v0.1.0-beta.1**, and the current `main` branch. Older beta builds are unsupported; update to the latest release before reporting an issue when possible.
+Security fixes are currently considered for the latest beta release, and the current `main` branch. Older beta builds are unsupported; update to the latest release before reporting an issue when possible.
 
 ## Report a vulnerability
 
