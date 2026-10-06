@@ -17,7 +17,7 @@ constexpr uint32_t AckTimeoutMs = 700;
 constexpr uint8_t MaxAttempts = 4;
 constexpr uint32_t DisplayIdleMs = 60000;
 constexpr uint32_t DeepSleepAfterUnlinkMs = 300000;
-constexpr uint8_t ForcedDisplayIdleTaps = 5;
+constexpr uint8_t DeepSleepGestureTaps = 5;
 constexpr uint32_t ForcedDisplayIdleSequenceGapMs = 600;
 
 char decode(const char* sequence);
@@ -131,6 +131,7 @@ struct State {
     bool batteryValid = false;
     bool displayIdle = false;
     bool deepSleepRequested = false;
+    bool deepSleepGestureRequested = false;
     bool cursorVisible = true;
     uint8_t progress = 0;
     uint8_t dictionaryPage = 0;
@@ -148,7 +149,7 @@ public:
     void setButtonProgress(uint8_t progress, bool held);
     void setPeerSignalBars(uint8_t bars);
     void setBatteryReading(bool valid, uint8_t percent);
-    void forceDisplayIdle(uint32_t now);
+    void requestDeepSleepFromGesture();
     const State& state() const { return state_; }
 private:
     void commit();
@@ -191,7 +192,7 @@ private:
     bool chord_ = false, chordLong_ = false;
     uint32_t chordAt_ = 0;
     uint32_t lastDisplayIdleTapAt_ = 0;
-    uint8_t displayIdleTapCount_ = 0;
+    uint8_t deepSleepTapCount_ = 0;
 };
 
 class IScreen {

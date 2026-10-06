@@ -1,31 +1,37 @@
 # Changelog
 
-## v1.1.0 — 2026-10-06 (staged; not published)
+## v1.1.1 — 2026-10-06 (staged; not published)
 
-- Show an approximate battery percentage beside the signal indicator on original LILYGO TTGO T-Display boards. The browser simulator uses clearly simulated values.
-- Sample battery voltage periodically using the board's GPIO14-controlled ADC path on GPIO34; keep sampling short and non-blocking, and disable the sensing circuit between readings.
-- Turn off and hold the TFT backlight and battery-sense enable inactive before deep sleep. Charging remains managed by the board's charger hardware.
-- Preserve the existing always-reachable awake-state radio and heartbeat behavior; no Wi-Fi power-save or light-sleep changes were introduced.
-- Document the estimate's limitations, hardware-managed charging, and the distinction between the charger LED and firmware-controlled outputs.
+- Five quick BOTH-button taps now request ESP32 deep sleep, powering down Wi-Fi and the processor instead of only blanking the display. DASH remains the wake button; deep sleep makes the device unreachable until wake.
+- An explicit five-tap sleep request is not canceled by an incoming peer heartbeat during the same loop.
+- Preserve the prior four-tap dictionary delay, one-minute display-only idle behavior, DASH-held safety check, and wake-press suppression.
+- Corrected project discovery for both packaged macOS releases (`project/` beside the `.app`) and development apps launched from the repository's `dist/`; show a helpful message if files are missing.
+- Renamed the desktop utility in its user-facing title to **PMFT — Pocket Morse Flash Tool**. Existing app/executable filenames remain compatible with the release workflow.
+- v1.1.0 battery estimate work remains included; charging remains board-hardware-managed.
 
 ### Verification and qualification
 
-- PlatformIO: all 9 configured firmware targets succeeded (A/B, 4 MB/16 MB, portrait/landscape, and Wokwi) using `pio run ... -j 1`.
-- Native tests: all 14 test groups passed, including battery curve boundaries, invalid readings, scheduled ADC enable/disable, non-blocking sampling, sleep shutdown, and both screen orientations.
-- WebAssembly simulator: **not verified for v1.1.0**. The checked-in generated bundle was stale, and local Emscripten compilation stalled. The CI quality gate must rebuild the bundle and pass the new simulated-battery scenarios before public publication.
-- Physical board checks: battery estimate calibration, ADC values on actual board revisions, deep-sleep current, and LED behavior were not verified on hardware.
-- Windows app: not built locally on this Mac. The release workflow builds it on a native Windows runner after the v1.1.0 tag is pushed.
-- macOS arm64 app and pairing helper were freshly built with PyInstaller 6.22.3 / Python 3.14.7. The app was set to version 1.1.0, ad-hoc signed and verified with `codesign --verify --deep --strict` from a clean temporary copy; the 20 MB archive passed `unzip -t`.
-- Archive SHA-256: `bac9c5b446b85de6353d0e3288b4e401200ff41db9c1eacc7861854b349076c6`.
-- The application was packaged but not interactively launched or tested against attached hardware.
+- Native C++ tests: all 14 groups passed, including the five-tap deep-sleep request regression test.
+- PlatformIO build matrix: all 9 environments passed (`device_a`, `device_b`, 4 MB/16 MB, portrait/landscape, and `wokwi`). The only emitted warning was TFT_eSPI's expected missing touch-controller pin warning.
+- WebAssembly battery simulator build was not verified locally for v1.1.0; CI must rebuild and pass the full simulator suite.
+- Windows PMFT is built by the native Windows release runner; it was not built on this Mac.
+- Physical DASH wake, immediate wake after five taps, paired reconnection, battery calibration, sleep current, and charge LED behavior have not been tested on the actual hardware.
+- macOS PMFT 1.1.1 app and pairing helper built with PyInstaller 6.22.3 / Python 3.14.7. `codesign --verify --deep --strict` and archive `unzip -t` passed.
+- Packaged-layout project discovery test passed against an extracted archive (`project/` resolved beside `.app`). The app has not been interactively launched or tested with physical boards; end-to-end upload remains unverified.
 
 This is an experimental communications project and has not been independently security-audited. It is not suitable for emergency, safety-critical, or high-stakes use.
+
+## v1.1.0 — 2026-10-06 (superseded staged build)
+
+- Added the approximate battery estimate, periodic GPIO14/GPIO34 sampling, simulated battery readings, and deep-sleep shutdown of the TFT backlight and sensing circuit.
+- All 9 configured PlatformIO targets and all 14 native test groups passed for the v1.1.0 source.
+- WebAssembly battery simulator scenarios and physical battery/sleep behavior were not verified. See [v1.1.0 release notes](docs/releases/uploader-v1.1.0.md).
 
 ## 2026-10-05 — Deep-sleep wake reliability
 
 - Configure DASH/GPIO35 as an RTC input before arming ESP32 EXT0 active-low deep-sleep wake, then restore its normal digital GPIO function after wake/reboot.
 - Do not enter deep sleep while DASH is held. Ignore the DASH wake press until it is released so waking cannot accidentally invoke the normal DASH action.
-- Document the actual power-state contract: after a previously linked peer disappears, the device waits five minutes; reconnection cancels that countdown; once asleep it is unreachable until DASH wakes it and startup reinitializes ESP-NOW.
+- After a previously linked peer disappears, wait five minutes; reconnection cancels that countdown. Once asleep, the device is unreachable until DASH wakes it and startup reinitializes ESP-NOW.
 
 ### Verification
 

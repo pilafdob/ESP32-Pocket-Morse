@@ -26,8 +26,8 @@ def main() -> int:
     with info.open("rb") as stream:
         metadata = plistlib.load(stream)
     metadata.update({
-        "CFBundleDisplayName": "Pocket Morse Communicators",
-        "CFBundleName": "Pocket Morse Communicators",
+        "CFBundleDisplayName": "PMFT",
+        "CFBundleName": "PMFT",
         "CFBundleIdentifier": "com.github.pilafdob.pocketmorse",
         "CFBundleShortVersionString": version,
         "CFBundleVersion": version,

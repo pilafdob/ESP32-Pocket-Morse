@@ -1,11 +1,11 @@
-# Pocket Morse Communicators v1.1.0
+# PMFT — Pocket Morse Flash Tool (v1.1.1)
 
 Thank you for trying Pocket Morse Communicators. This release is for **two original LILYGO TTGO T-Display ESP32 boards** (ST7789 display, GPIO0 and GPIO35 onboard buttons). It does not support the T-Display S3.
 
 ## Quick start
 
 1. Install PlatformIO Core and make the `pio` command available on your `PATH`.
-2. Keep `PocketMorseUploader.app` (macOS) or `PocketMorseUploader.exe` (Windows), `provision_pair` (or `provision_pair.exe`), and the `project/` folder together after extracting the archive.
+2. Keep PMFT (`PocketMorseUploader.app` on macOS or `PocketMorseUploader.exe` on Windows), `provision_pair` (or `provision_pair.exe`), and the `project/` folder together after extracting the archive.
 3. Connect one board by USB, select its serial port and role (A or B), confirm its flash size, and build/upload. Repeat for the second board with the other role.
 4. Connect both boards, select their serial ports in the pairing section, and choose **Generate key & pair A + B**. Pairing generates a random pair key and provisions it to both devices over USB.
 

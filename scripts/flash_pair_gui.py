@@ -27,7 +27,22 @@ def application_directory() -> Path:
 
 def project_root() -> Path:
     if getattr(sys, "frozen", False):
-        return application_directory() / "project"
+        # On macOS the executable lives inside the .app bundle while the
+        # release's project/ directory is a sibling of that bundle. Windows
+        # one-file builds put the executable beside project/ directly.
+        candidates = [
+            application_directory() / "project",
+            application_directory().parent / "project",
+            # Also support launching a development build directly from the
+            # repository's dist/ folder, where the repository root is the
+            # firmware project rather than a nested project/ directory.
+            application_directory(),
+            application_directory().parent,
+        ]
+        for candidate in candidates:
+            if candidate.is_dir() and (candidate / "platformio.ini").is_file():
+                return candidate
+        return candidates[0]
     return ROOT
 
 
@@ -78,7 +93,7 @@ def serial_ports() -> list[tuple[str, str]]:
 class FlashPairApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("Pocket Morse · Flash & Pair")
+        self.root.title("PMFT · Pocket Morse Flash Tool")
         self.root.minsize(680, 600)
         self.messages: queue.Queue[tuple[str, object]] = queue.Queue()
         self.busy = False
@@ -245,12 +260,20 @@ class FlashPairApp:
     def _run(self, command: list[str], status: str, cwd: Path | None = None) -> None:
         if self.busy:
             return
+        working_directory = cwd or project_root()
+        if not working_directory.is_dir():
+            messagebox.showerror(
+                "Project files missing",
+                "Could not find the bundled firmware project. Extract the complete release archive, "
+                "keeping the app, provision_pair helper, and project folder together.",
+            )
+            return
         self.busy = True
         self.status.set(status)
         self.upload_button.configure(state="disabled")
         self.pair_button.configure(state="disabled")
         self._append("\n$ " + " ".join(command) + "\n")
-        threading.Thread(target=self._worker, args=(command, cwd or project_root()), daemon=True).start()
+        threading.Thread(target=self._worker, args=(command, working_directory), daemon=True).start()
 
     def _worker(self, command: list[str], cwd: Path) -> None:
         try:

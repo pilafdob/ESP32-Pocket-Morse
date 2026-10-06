@@ -373,13 +373,22 @@ void powerModes() {
 
     Capture forcedTransport; App forced(forcedTransport, 123); InputManager keys;
     uint32_t now = 100;
-    for (unsigned tap = 0; tap < ForcedDisplayIdleTaps; ++tap) {
+    for (unsigned tap = 0; tap < DeepSleepGestureTaps; ++tap) {
         keys.sample(true, true, now, forced); now += DebounceMs;
         keys.sample(true, true, now, forced); now += 10;
         keys.sample(false, false, now, forced); now += DebounceMs;
         keys.sample(false, false, now, forced); now += 100;
     }
-    assert(forced.state().displayIdle);
+    assert(forced.state().deepSleepRequested);
+    assert(forced.state().deepSleepGestureRequested);
+    assert(!forced.state().displayIdle);
+    forced.tick(now);
+    Packet forcedPing;
+    assert(deserialize(forcedTransport.sent.back().data(), forcedTransport.sent.back().size(), forcedPing));
+    Packet forcedPong; forcedPong.type = PacketType::Pong;
+    forcedPong.session = forcedPing.session; forcedPong.id = forcedPing.id;
+    inject(forced, forcedPong, now + 1);
+    assert(forced.state().peerConnected && forced.state().deepSleepRequested);
 
     Capture dictionaryTransport; App dictionary(dictionaryTransport, 124);
     for (unsigned tap = 0; tap < 4; ++tap) dictionary.press(Button::Both, false, tap * 100);
@@ -388,7 +397,7 @@ void powerModes() {
     assert(dictionary.state().mode == Mode::Compose);
     dictionary.tick(3 * 100 + DictionaryTapDelayMs);
     assert(dictionary.state().mode == Mode::Dictionary);
-    puts("PASS display-idle heartbeat continuity, receive wake, deep-sleep timeout, five-tap idle and delayed dictionary");
+    puts("PASS display-idle heartbeat continuity, receive wake, deep-sleep timeout, five-tap deep sleep and delayed dictionary");
 }
 void inputs() {
     Capture t; App app(t, 10); InputManager keys;

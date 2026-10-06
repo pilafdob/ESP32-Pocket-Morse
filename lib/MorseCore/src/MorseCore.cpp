@@ -332,9 +332,9 @@ void App::setBatteryReading(bool valid, uint8_t percent) {
     state_.batteryValid = valid;
     state_.batteryPercent = valid ? (percent > 100 ? 100 : percent) : 0;
 }
-void App::forceDisplayIdle(uint32_t now) {
-    state_.displayIdle = true;
-    lastActivityAt_ = now;
+void App::requestDeepSleepFromGesture() {
+    state_.deepSleepRequested = true;
+    state_.deepSleepGestureRequested = true;
     tapCount_ = 0;
 }
 void App::press(Button button, bool longPress, uint32_t now) {
@@ -522,7 +522,7 @@ void App::receive(const uint8_t* bytes, size_t length, uint32_t now) {
             peerAt_ = now; state_.peerConnected = true;
             peerEverConnected_ = true;
             unlinkTimerStarted_ = false;
-            state_.deepSleepRequested = false;
+            state_.deepSleepRequested = state_.deepSleepGestureRequested;
         }
         return;
     }
@@ -552,7 +552,7 @@ void App::receive(const uint8_t* bytes, size_t length, uint32_t now) {
     transport_.send(ack, ackLength);
 }
 void InputManager::sample(bool dot, bool dash, uint32_t now, App& app) {
-    if (app.state().mode == Mode::Dictionary) displayIdleTapCount_ = 0;
+    if (app.state().mode == Mode::Dictionary) deepSleepTapCount_ = 0;
     const bool raw[] = {dot, dash};
     bool released[2] = {};
     for (unsigned i = 0; i < 2; ++i) {
@@ -579,23 +579,23 @@ void InputManager::sample(bool dot, bool dash, uint32_t now, App& app) {
                 const bool waking = app.state().displayIdle;
                 app.press(Button::Both, false, now);
                 if (waking) {
-                    displayIdleTapCount_ = 0;
+                    deepSleepTapCount_ = 0;
                 } else {
-                    if (displayIdleTapCount_ && uint32_t(now - lastDisplayIdleTapAt_) > ForcedDisplayIdleSequenceGapMs)
-                        displayIdleTapCount_ = 0;
+                    if (deepSleepTapCount_ && uint32_t(now - lastDisplayIdleTapAt_) > ForcedDisplayIdleSequenceGapMs)
+                        deepSleepTapCount_ = 0;
                     lastDisplayIdleTapAt_ = now;
-                    if (++displayIdleTapCount_ >= ForcedDisplayIdleTaps) {
-                        displayIdleTapCount_ = 0;
-                        app.forceDisplayIdle(now);
+                    if (++deepSleepTapCount_ >= DeepSleepGestureTaps) {
+                        deepSleepTapCount_ = 0;
+                        app.requestDeepSleepFromGesture();
                     }
                 }
             } else {
-                displayIdleTapCount_ = 0;
+                deepSleepTapCount_ = 0;
             }
             chord_ = false;
         }
     } else {
-        if (released[0] || released[1]) displayIdleTapCount_ = 0;
+        if (released[0] || released[1]) deepSleepTapCount_ = 0;
         for (unsigned i = 0; i < 2; ++i) {
             auto& key = keys_[i];
             if (released[i] && !key.longFired) app.press(static_cast<Button>(i), false, now);
