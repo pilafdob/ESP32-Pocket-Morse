@@ -102,6 +102,70 @@ uint8_t signalBarsFromRssi(int8_t rssi) {
     if (rssi >= -85) return 1;
     return 0;
 }
+bool batteryPercentFromMillivolts(uint32_t millivolts, uint8_t& percent) {
+    // Approximate open-circuit 1-cell LiPo curve. Real cells, temperature,
+    // aging and radio load shift this estimate; this is not a fuel gauge.
+    struct Point { uint16_t mv; uint8_t percent; };
+    static constexpr Point curve[] = {
+        {3000, 0}, {3300, 5}, {3500, 10}, {3600, 20}, {3700, 35},
+        {3750, 45}, {3800, 55}, {3850, 65}, {3900, 75}, {3950, 82},
+        {4000, 88}, {4050, 94}, {4100, 97}, {4200, 100}
+    };
+    if (millivolts < 2500 || millivolts > 4400) return false;
+    if (millivolts <= curve[0].mv) { percent = 0; return true; }
+    for (size_t i = 1; i < sizeof(curve) / sizeof(curve[0]); ++i) {
+        if (millivolts <= curve[i].mv) {
+            const uint32_t span = curve[i].mv - curve[i - 1].mv;
+            const uint32_t offset = millivolts - curve[i - 1].mv;
+            const uint32_t rise = curve[i].percent - curve[i - 1].percent;
+            percent = static_cast<uint8_t>(curve[i - 1].percent + (offset * rise + span / 2) / span);
+            return true;
+        }
+    }
+    percent = 100;
+    return true;
+}
+void BatteryMonitor::begin(uint32_t now) {
+    input_.setEnabled(false);
+    phase_ = Phase::Idle;
+    nextSampleAt_ = now;
+    sampleCount_ = 0;
+    sumMillivolts_ = 0;
+    valid_ = false;
+}
+bool BatteryMonitor::tick(uint32_t now) {
+    const auto due = [now](uint32_t at) { return static_cast<int32_t>(now - at) >= 0; };
+    if (phase_ == Phase::Idle) {
+        if (!due(nextSampleAt_)) return false;
+        input_.setEnabled(true);
+        phase_ = Phase::Settling;
+        phaseAt_ = now;
+        return false;
+    }
+    if (phase_ == Phase::Settling) {
+        if (uint32_t(now - phaseAt_) < 5) return false;
+        (void)input_.readMillivolts(); // discard the ADC's first post-enable conversion
+        phase_ = Phase::Sampling;
+        phaseAt_ = now;
+        sampleCount_ = 0;
+        sumMillivolts_ = 0;
+        return false;
+    }
+    if (uint32_t(now - phaseAt_) < 2) return false;
+    phaseAt_ = now;
+    sumMillivolts_ += input_.readMillivolts();
+    if (++sampleCount_ < 8) return false;
+    input_.setEnabled(false);
+    phase_ = Phase::Idle;
+    nextSampleAt_ = now + 30000;
+    const uint32_t pinMillivolts = (sumMillivolts_ + 4) / 8;
+    valid_ = batteryPercentFromMillivolts(pinMillivolts * 2, percent_);
+    return true;
+}
+void BatteryMonitor::stop() {
+    input_.setEnabled(false);
+    phase_ = Phase::Idle;
+}
 char dictionarySymbol(size_t index) {
     if (index >= sizeof(Alphabet) - 1) return '\0';
     const char symbol = Alphabet[index];
@@ -263,6 +327,10 @@ void App::setButtonProgress(uint8_t progress, bool held) {
 }
 void App::setPeerSignalBars(uint8_t bars) {
     state_.peerSignalBars = state_.peerConnected ? (bars > 3 ? 3 : bars) : 0;
+}
+void App::setBatteryReading(bool valid, uint8_t percent) {
+    state_.batteryValid = valid;
+    state_.batteryPercent = valid ? (percent > 100 ? 100 : percent) : 0;
 }
 void App::forceDisplayIdle(uint32_t now) {
     state_.displayIdle = true;
@@ -558,6 +626,9 @@ void renderLandscape(const State& state, const char* name, IScreen& screen) {
     screen.text(110, 5, deliveryName(state.delivery), 1,
                 state.delivery == Delivery::Failed ? 0xfa69 : mint);
     screen.signalBars(60, 5, state.peerConnected ? state.peerSignalBars : 0, mint);
+    if (state.batteryValid) snprintf(line, sizeof(line), "%u%%", state.batteryPercent);
+    else snprintf(line, sizeof(line), "--%%");
+    screen.text(75, 5, line, 1, dim);
     snprintf(line, sizeof(line), "%lu", static_cast<unsigned long>(state.inboxRemaining));
     screen.text(110, 14, line, 1, dim);
     screen.dial(228, 10, state.progress, amber);
@@ -630,6 +701,9 @@ void renderPortrait(const State& state, const char* name, IScreen& screen) {
     screen.text(5, 21, deliveryName(state.delivery), 1,
                 state.delivery == Delivery::Failed ? 0xfa69 : mint);
     screen.signalBars(59, 5, state.peerConnected ? state.peerSignalBars : 0, mint);
+    if (state.batteryValid) snprintf(line, sizeof(line), "%u%%", state.batteryPercent);
+    else snprintf(line, sizeof(line), "--%%");
+    screen.text(74, 5, line, 1, dim);
     snprintf(line, sizeof(line), "%lu", static_cast<unsigned long>(state.inboxRemaining));
     screen.text(5, 33, line, 1, dim);
     snprintf(line, sizeof(line), "%luN %luS",

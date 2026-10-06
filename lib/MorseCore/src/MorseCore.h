@@ -26,6 +26,31 @@ size_t dictionaryCount();
 char dictionarySymbol(size_t index);
 const char* dictionaryCode(size_t index);
 uint8_t signalBarsFromRssi(int8_t rssi);
+bool batteryPercentFromMillivolts(uint32_t millivolts, uint8_t& percent);
+class IBatteryInput {
+public:
+    virtual ~IBatteryInput() = default;
+    virtual void setEnabled(bool enabled) = 0;
+    // Millivolts at the board's ADC pin, before the board's 2:1 battery divider.
+    virtual uint16_t readMillivolts() = 0;
+};
+class BatteryMonitor {
+public:
+    explicit BatteryMonitor(IBatteryInput& input) : input_(input) {}
+    void begin(uint32_t now);
+    // Non-blocking; true means a new valid or invalid reading was completed.
+    bool tick(uint32_t now);
+    void stop();
+    bool valid() const { return valid_; }
+    uint8_t percent() const { return percent_; }
+private:
+    enum class Phase : uint8_t { Idle, Settling, Sampling };
+    IBatteryInput& input_;
+    Phase phase_ = Phase::Idle;
+    uint32_t nextSampleAt_ = 0, phaseAt_ = 0, sumMillivolts_ = 0;
+    uint8_t sampleCount_ = 0, percent_ = 0;
+    bool valid_ = false;
+};
 enum class PacketType : uint8_t { Text = 1, Ack = 2, Ping = 3, Pong = 4 };
 struct Packet {
     PacketType type = PacketType::Text;
@@ -102,6 +127,8 @@ struct State {
     uint32_t messageId = 0;
     bool peerConnected = false;
     uint8_t peerSignalBars = 0;
+    uint8_t batteryPercent = 0;
+    bool batteryValid = false;
     bool displayIdle = false;
     bool deepSleepRequested = false;
     bool cursorVisible = true;
@@ -120,6 +147,7 @@ public:
     void receive(const uint8_t* bytes, size_t length, uint32_t now);
     void setButtonProgress(uint8_t progress, bool held);
     void setPeerSignalBars(uint8_t bars);
+    void setBatteryReading(bool valid, uint8_t percent);
     void forceDisplayIdle(uint32_t now);
     const State& state() const { return state_; }
 private:

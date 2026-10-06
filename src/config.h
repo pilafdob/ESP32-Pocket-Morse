@@ -4,6 +4,8 @@
 namespace config {
 constexpr uint8_t DotPin = 0;
 constexpr uint8_t DashPin = 35; // Input-only; no internal pull-up. Board has an external pull-up.
+constexpr uint8_t BatteryEnablePin = 14; // Original T-Display ADC_EN.
+constexpr uint8_t BatterySensePin = 34;  // ADC1 input behind the board's 2:1 divider.
 constexpr uint8_t Channel = 1; // Must match on both boards; no router required.
 #ifdef DEVICE_A
 constexpr const char* DeviceName = "A";

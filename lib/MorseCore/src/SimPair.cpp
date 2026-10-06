@@ -4,6 +4,8 @@ namespace morse {
 SimPair::SimPair(const uint8_t root[32], uint32_t sessionA, uint32_t sessionB)
     : ta_(*this, 0), tb_(*this, 1), a_(ta_, sessionA), b_(tb_, sessionB) {
     ca_.begin(root, 0); cb_.begin(root, 1);
+    a_.setBatteryReading(true, 82);
+    b_.setBatteryReading(true, 57);
 }
 bool SimPair::Endpoint::send(const uint8_t* bytes, size_t length) {
     return pair_.send(device_, bytes, length);

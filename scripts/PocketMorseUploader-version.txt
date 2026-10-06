@@ -16,12 +16,12 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'Pocket Morse Communicators'),
           StringStruct('FileDescription', 'Pocket Morse Flash and Pair Utility'),
-          StringStruct('FileVersion', '1.0.0'),
+          StringStruct('FileVersion', '1.1.0'),
           StringStruct('InternalName', 'PocketMorseUploader'),
           StringStruct('LegalCopyright', 'Copyright (c) 2026 Filip'),
           StringStruct('OriginalFilename', 'PocketMorseUploader.exe'),
           StringStruct('ProductName', 'Pocket Morse Communicators'),
-          StringStruct('ProductVersion', '1.0.0')
+          StringStruct('ProductVersion', '1.1.0')
         ]
       )
     ]),

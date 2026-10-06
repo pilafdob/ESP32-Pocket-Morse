@@ -18,6 +18,7 @@ morse::SimPair* simulatedPair = nullptr;
 #include <esp_system.h>
 #include "transport/EspNowTransport.h"
 #include "FlashInboxStore.h"
+#include "BatteryMonitor.h"
 #include <WiFi.h>
 PairStore pairStore;
 FlashInboxStore inboxStorage;
@@ -27,6 +28,8 @@ morse::App* realApp = nullptr;
 morse::InputManager inputs;
 TFT_eSPI tft;
 TFT_eSprite frame(&tft);
+BoardBatteryInput batteryInput;
+morse::BatteryMonitor batteryMonitor(batteryInput);
 bool suppressDashWakePress = false;
 class TftScreen : public morse::IScreen {
 public:
@@ -52,6 +55,15 @@ public:
     }
 } screen;
 bool framebufferReady = false;
+bool holdRtcOutput(gpio_num_t pin, uint32_t level) {
+    return rtc_gpio_init(pin) == ESP_OK &&
+        rtc_gpio_set_direction(pin, RTC_GPIO_MODE_OUTPUT_ONLY) == ESP_OK &&
+        rtc_gpio_set_level(pin, level) == ESP_OK && rtc_gpio_hold_en(pin) == ESP_OK;
+}
+void releaseRtcOutput(gpio_num_t pin) {
+    rtc_gpio_hold_dis(pin);
+    rtc_gpio_deinit(pin);
+}
 #endif
 uint32_t lastDraw = 0;
 char lastStatus[384] = {};
@@ -82,6 +94,20 @@ void enterDeepSleep() {
         frame.pushSprite(0, 0);
     }
     digitalWrite(TFT_BL, !TFT_BACKLIGHT_ON);
+    batteryMonitor.stop();
+    // GPIO4 is the TFT backlight and GPIO14 enables the battery-sense path.
+    // Both are RTC-capable on the original ESP32 and are held inactive through sleep.
+    const uint32_t backlightOff = TFT_BACKLIGHT_ON ? 0 : 1;
+    if (!holdRtcOutput(GPIO_NUM_4, backlightOff) ||
+        !holdRtcOutput(static_cast<gpio_num_t>(config::BatteryEnablePin), 0)) {
+        releaseRtcOutput(GPIO_NUM_4);
+        releaseRtcOutput(static_cast<gpio_num_t>(config::BatteryEnablePin));
+        digitalWrite(config::BatteryEnablePin, LOW);
+        digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+        rtc_gpio_deinit(wakePin);
+        Serial.println("Could not hold power-control pins low; staying awake.");
+        return;
+    }
     Serial.flush();
     WiFi.mode(WIFI_OFF);
     esp_deep_sleep_start();
@@ -135,8 +161,11 @@ void setup() {
     Serial.begin(115200);
 #ifndef MORSE_WOKWI
     suppressDashWakePress = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0;
-    if (suppressDashWakePress)
+    if (suppressDashWakePress) {
+        releaseRtcOutput(GPIO_NUM_4);
+        releaseRtcOutput(static_cast<gpio_num_t>(config::BatteryEnablePin));
         rtc_gpio_deinit(static_cast<gpio_num_t>(config::DashPin));
+    }
 #endif
     pinMode(config::DotPin, INPUT_PULLUP);
     pinMode(config::DashPin, INPUT);
@@ -152,6 +181,8 @@ void setup() {
     tft.init();
     pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    batteryInput.begin();
+    batteryMonitor.begin(millis());
 #ifdef MORSE_LANDSCAPE
     tft.setRotation(1);
 #else
@@ -195,6 +226,8 @@ void loop() {
     inputs.sample(digitalRead(config::DotPin) == LOW,
                   dashPressed && !suppressDashWakePress, now, app);
     radio.poll(app, now);
+    if (batteryMonitor.tick(now))
+        app.setBatteryReading(batteryMonitor.valid(), batteryMonitor.percent());
     app.tick(now);
     const auto& powerState = app.state();
     static bool displayIdle = false;
@@ -206,7 +239,12 @@ void loop() {
     if (powerState.deepSleepRequested) enterDeepSleep();
     if (displayIdle) delay(10);
 #endif
-    if (uint32_t(now - lastDraw) < 40) return;
+    if (uint32_t(now - lastDraw) < 40) {
+#ifndef MORSE_WOKWI
+        delay(1); // Yield instead of busy-spinning while maintaining radio polling.
+#endif
+        return;
+    }
     lastDraw = now;
     const auto& s = app.state();
     char status[384];
@@ -232,5 +270,8 @@ void loop() {
             inboxStorage.mounted() ? "PAIR VIA USB" : "INBOX ERROR", 1, TFT_RED);
         frame.pushSprite(0, 0);
     }
+#endif
+#ifndef MORSE_WOKWI
+    delay(1);
 #endif
 }

@@ -28,6 +28,12 @@ export function runScenarios(wasm) {
     try { callback(); results.push({ name, passed: true }); }
     catch (error) { results.push({ name, passed: false, error: error.message }); }
   };
+  scenario('Battery readings are simulated and rendered beside peer signal', () => {
+    check(engine.state(0).batteryValid && engine.state(0).batteryPercent === 82, 'Device A simulated battery missing');
+    check(engine.state(1).batteryValid && engine.state(1).batteryPercent === 57, 'Device B simulated battery missing');
+    check(engine.frame(0).some(item => item.x === 74 && item.text === '82%'), 'Portrait battery label missing');
+    check(engine.frame(0, true).some(item => item.x === 75 && item.text === '82%'), 'Landscape battery label missing');
+  });
   scenario('Two-button HELLO, encrypted receipt, accept-to-read, compose again', () => {
     compose(engine, 0); check(engine.state(0).draft === 'HELLO', 'Composition mismatch');
     send(engine, 0); engine.step(250);

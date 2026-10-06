@@ -26,6 +26,56 @@ struct Capture : ITransport {
         size_t n = 0; for (auto& b : sent) { Packet p; if (deserialize(b.data(), b.size(), p) && p.type == PacketType::Text) ++n; } return n;
     }
 };
+struct FakeBatteryInput : IBatteryInput {
+    bool enabled = false;
+    uint16_t pinMillivolts = 2000;
+    unsigned reads = 0, enables = 0, disables = 0;
+    void setEnabled(bool value) override {
+        enabled = value;
+        value ? ++enables : ++disables;
+    }
+    uint16_t readMillivolts() override { assert(enabled); ++reads; return pinMillivolts; }
+};
+void batteryMonitorTests() {
+    uint8_t percent = 0;
+    assert(batteryPercentFromMillivolts(2500, percent) && percent == 0);
+    assert(batteryPercentFromMillivolts(3000, percent) && percent == 0);
+    assert(batteryPercentFromMillivolts(3300, percent) && percent == 5);
+    assert(batteryPercentFromMillivolts(3500, percent) && percent == 10);
+    assert(batteryPercentFromMillivolts(3600, percent) && percent == 20);
+    assert(batteryPercentFromMillivolts(3650, percent) && percent == 28);
+    assert(batteryPercentFromMillivolts(3800, percent) && percent == 55);
+    assert(batteryPercentFromMillivolts(4000, percent) && percent == 88);
+    assert(batteryPercentFromMillivolts(4200, percent) && percent == 100);
+    assert(batteryPercentFromMillivolts(4400, percent) && percent == 100);
+    assert(!batteryPercentFromMillivolts(2499, percent));
+    assert(!batteryPercentFromMillivolts(4401, percent));
+
+    FakeBatteryInput input; BatteryMonitor monitor(input); Capture transport; App app(transport, 900);
+    monitor.begin(100); assert(!input.enabled && input.disables == 1);
+    bool completed = false;
+    for (uint32_t at = 100; at <= 121; ++at) {
+        const bool updated = monitor.tick(at);
+        app.tick(at); // button/radio application continues to be serviced between ADC steps
+        if (updated) { app.setBatteryReading(monitor.valid(), monitor.percent()); completed = true; }
+        if (at < 121) assert(!updated);
+    }
+    assert(completed && !input.enabled && input.reads == 9); // one discarded + eight averaged samples
+    assert(monitor.valid() && monitor.percent() == 88);
+    assert(app.state().batteryValid && app.state().batteryPercent == 88);
+    assert(!transport.sent.empty()); // monitor work did not prevent the app heartbeat tick
+    const unsigned oldReads = input.reads;
+    for (uint32_t at = 122; at < 30121; ++at) assert(!monitor.tick(at));
+    assert(input.reads == oldReads && !input.enabled);
+    assert(!monitor.tick(30121) && input.enabled);
+    input.pinMillivolts = 2300; // invalid 4.6 V after the board's 2:1 divider
+    bool invalidUpdate = false;
+    for (uint32_t at = 30122; at <= 30143; ++at)
+        if (monitor.tick(at)) invalidUpdate = true;
+    assert(invalidUpdate && !monitor.valid() && !input.enabled);
+    monitor.stop(); assert(!input.enabled);
+    puts("PASS battery voltage curve, invalid readings, scheduled non-blocking ADC and enable shutdown");
+}
 void compose(App& app, const char* text, uint32_t now = 1) {
     for (const char* p = text; *p; ++p) {
         if (*p != ' ') for (const char* c = encode(*p); *c; ++c)
@@ -219,6 +269,7 @@ void screenLayouts() {
     assert(signalBarsFromRssi(-75) == 1);
     assert(signalBarsFromRssi(-90) == 0);
     State state;
+    state.batteryValid = true; state.batteryPercent = 87;
     state.inboxCount = 101234; state.unreadCount = 101234;
     state.inboxPosition = 101234; state.inboxRemaining = 101234;
     strcpy(state.draft,"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:?'-/()\"=+@");
@@ -256,8 +307,19 @@ void screenLayouts() {
                 std::make_pair(59, 5)) != portraitRole.signalBarPositions.end());
             assert(std::find(landscapeRole.signalBarPositions.begin(), landscapeRole.signalBarPositions.end(),
                 std::make_pair(60, 5)) != landscapeRole.signalBarPositions.end());
+            const auto hasBattery = [](const BoundsScreen& screen, int x) {
+                return std::find(screen.labels.begin(), screen.labels.end(),
+                    std::make_tuple(x, 5, std::string("87%"))) != screen.labels.end();
+            };
+            assert(hasBattery(portraitRole, 74) && 74 + 18 < 123 - 8);
+            assert(hasBattery(landscapeRole, 75) && 75 + 18 < 110);
         }
     }
+    state.batteryValid = false;
+    BoundsScreen unavailable(135, 240);
+    render(state, "A", unavailable, ScreenLayout::Portrait);
+    assert(std::find(unavailable.labels.begin(), unavailable.labels.end(),
+        std::make_tuple(74, 5, std::string("--%"))) != unavailable.labels.end());
     puts("PASS portrait and preserved landscape bounds across all screen modes/dictionary pages");
 }
 void powerModes() {
@@ -445,7 +507,7 @@ void security() {
 }
 void storageTests();
 int main() {
-    vectors(); codecs(); inputs(); compositionAndInbox(); deletionFeatures(); reliability(); failuresAndHeartbeat(); security(); usability(); journalTests(); screenLayouts(); powerModes();
+    vectors(); codecs(); inputs(); compositionAndInbox(); deletionFeatures(); reliability(); failuresAndHeartbeat(); security(); usability(); journalTests(); screenLayouts(); powerModes(); batteryMonitorTests();
     storageTests();
-    puts("All 11 native test groups passed.");
+    puts("All 14 native test groups passed.");
 }

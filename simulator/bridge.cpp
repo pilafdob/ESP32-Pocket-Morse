@@ -74,11 +74,12 @@ EMSCRIPTEN_KEEPALIVE const char* sim_state(int device) {
     snprintf(stateJson, sizeof(stateJson),
         "{\"sequence\":\"%s\",\"draft\":\"%s\",\"received\":\"%s\",\"lastSent\":\"%s\","
         "\"notice\":\"%s\",\"delivery\":\"%s\",\"attempts\":%u,\"messageId\":%lu,"
-        "\"receivedCount\":%lu,\"duplicates\":%lu,\"mode\":\"%s\",\"connected\":%s,\"displayIdle\":%s,\"signalBars\":%u,\"progress\":%u,\"dictionaryPage\":%u,\"unreadCount\":%lu,\"inboxCount\":%lu,\"inboxPosition\":%lu,\"inboxRemaining\":%lu,\"cursorVisible\":%s}",
+        "\"receivedCount\":%lu,\"duplicates\":%lu,\"mode\":\"%s\",\"connected\":%s,\"displayIdle\":%s,\"signalBars\":%u,\"batteryPercent\":%u,\"batteryValid\":%s,\"progress\":%u,\"dictionaryPage\":%u,\"unreadCount\":%lu,\"inboxCount\":%lu,\"inboxPosition\":%lu,\"inboxRemaining\":%lu,\"cursorVisible\":%s}",
         s.sequence, draft, received, lastSent, notice, morse::deliveryName(s.delivery),
         s.attempts, static_cast<unsigned long>(s.messageId),
         static_cast<unsigned long>(s.receivedCount), static_cast<unsigned long>(s.duplicates),
-        morse::modeName(s.mode), s.peerConnected ? "true" : "false", s.displayIdle ? "true" : "false", s.peerSignalBars, s.progress, s.dictionaryPage,
+        morse::modeName(s.mode), s.peerConnected ? "true" : "false", s.displayIdle ? "true" : "false", s.peerSignalBars,
+        s.batteryPercent, s.batteryValid ? "true" : "false", s.progress, s.dictionaryPage,
         static_cast<unsigned long>(s.unreadCount), static_cast<unsigned long>(s.inboxCount),
         static_cast<unsigned long>(s.inboxPosition), static_cast<unsigned long>(s.inboxRemaining),
         s.cursorVisible ? "true" : "false");
